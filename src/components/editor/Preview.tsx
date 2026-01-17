@@ -168,10 +168,17 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
       });
       videoRef.current.currentTime = targetTime;
 
-      // Stop reverse playback when clip changes
-      stopReversePlayback();
+      // Only stop reverse playback if we're not currently reversing
+      // (clip change during reverse should continue reverse)
+      if (!isPlayingReverseRef.current) {
+        stopReversePlayback();
+      }
 
       if (isPlaying) {
+        if (isPlayingReverseRef.current) {
+          // Reverse playback is handling clip transitions - don't interfere
+          return;
+        }
         videoRef.current.play()
           .then(() => console.log('[Clip] play() succeeded'))
           .catch((e) => console.log('[Clip] play() error:', e));
