@@ -1,8 +1,13 @@
 import { callGeminiText } from '@/lib/ai/gemini';
-import { ToolRegistry } from './types';
+import { ToolRegistry, JsonValue } from './types';
+import {
+  executeTool,
+  ToolResult as SharedToolResult,
+} from '@/lib/agents/shared';
 
 export function createToolRegistry(): ToolRegistry {
   return {
+    // Original behavior agent tools
     suggestTimelineTips: async (_args, context) => {
       const added = context.behavior.eventCounts.clip_added ?? 0;
       const moved = context.behavior.eventCounts.clip_moved ?? 0;
@@ -27,6 +32,7 @@ export function createToolRegistry(): ToolRegistry {
         phase: context.behavior.phase,
       };
     },
+
     analyzePlaybackFriction: async (_args, context) => {
       const seeks = context.behavior.eventCounts.preview_seek ?? 0;
       const pauses = context.behavior.eventCounts.preview_pause ?? 0;
@@ -50,6 +56,7 @@ export function createToolRegistry(): ToolRegistry {
             : 'Playback looks smooth; no intervention needed.'),
       };
     },
+
     surfaceExportHelp: async (_args, context) => {
       const failures = context.behavior.eventCounts.export_failed ?? 0;
       const aiText = await callGeminiText(
@@ -70,5 +77,154 @@ export function createToolRegistry(): ToolRegistry {
             : 'Export in progress. Consider showing a progress indicator.'),
       };
     },
+
+    // Shared timeline tools - wrapper functions that use shared executors
+    list_videos: async (_args, context) => {
+      if (!context.userId) {
+        return { error: 'User ID required for library access' };
+      }
+      const result = await executeTool(
+        { tool: 'list_videos' },
+        context.userId,
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
+
+    get_video: async (args, context) => {
+      if (!context.userId) {
+        return { error: 'User ID required for library access' };
+      }
+      const result = await executeTool(
+        { tool: 'get_video', args: args as Record<string, unknown> },
+        context.userId,
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
+
+    list_audio: async (_args, context) => {
+      if (!context.userId) {
+        return { error: 'User ID required for library access' };
+      }
+      const result = await executeTool(
+        { tool: 'list_audio' },
+        context.userId,
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
+
+    get_audio: async (args, context) => {
+      if (!context.userId) {
+        return { error: 'User ID required for library access' };
+      }
+      const result = await executeTool(
+        { tool: 'get_audio', args: args as Record<string, unknown> },
+        context.userId,
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
+
+    add_video_to_timeline: async (args, context) => {
+      if (!context.userId) {
+        return { error: 'User ID required for timeline modification' };
+      }
+      const result = await executeTool(
+        { tool: 'add_video_to_timeline', args: args as Record<string, unknown> },
+        context.userId,
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
+
+    modify_video_clip: async (args, context) => {
+      const result = await executeTool(
+        { tool: 'modify_video_clip', args: args as Record<string, unknown> },
+        context.userId ?? '',
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
+
+    add_audio_to_timeline: async (args, context) => {
+      if (!context.userId) {
+        return { error: 'User ID required for timeline modification' };
+      }
+      const result = await executeTool(
+        { tool: 'add_audio_to_timeline', args: args as Record<string, unknown> },
+        context.userId,
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
+
+    modify_audio_clip: async (args, context) => {
+      const result = await executeTool(
+        { tool: 'modify_audio_clip', args: args as Record<string, unknown> },
+        context.userId ?? '',
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
+
+    summarize_timeline: async (_args, context) => {
+      const result = await executeTool(
+        { tool: 'summarize_timeline' },
+        context.userId ?? '',
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
+
+    list_clips: async (_args, context) => {
+      const result = await executeTool(
+        { tool: 'list_clips' },
+        context.userId ?? '',
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
+
+    suggest_next_action: async (_args, context) => {
+      const result = await executeTool(
+        { tool: 'suggest_next_action' },
+        context.userId ?? '',
+        context.clips ?? [],
+        context.audioClips ?? []
+      );
+      return convertResult(result);
+    },
   };
+}
+
+/**
+ * Convert shared tool result to behavior agent JsonValue format
+ */
+function convertResult(result: SharedToolResult): JsonValue {
+  if (result.success) {
+    const output: Record<string, JsonValue> = {
+      message: result.data,
+    };
+    if (result.action) {
+      // Include action details in a serializable format
+      output.action = {
+        type: result.action.type,
+        payload: result.action.payload as unknown as JsonValue,
+      };
+    }
+    return output;
+  }
+  return { error: result.error };
 }

@@ -1,3 +1,7 @@
+import { VideoReference } from '@/types/video';
+import { TimelineAction } from '@/types/actions';
+import { AudioReference } from '@/lib/agents/shared/types';
+
 export type JsonValue =
   | string
   | number

@@ -8,6 +8,7 @@ import { Timeline } from './Timeline';
 import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { Loader2 } from 'lucide-react';
+import { TimelineAction } from '@/types/actions';
 
 // Helper to extract video duration from URL
 const getVideoDuration = (url: string): Promise<number> => {
