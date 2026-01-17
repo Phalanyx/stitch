@@ -1,5 +1,5 @@
-import { callGeminiText, parseJsonFromText } from '@/lib/ai/gemini';
-import { getVideoMetadataForUser } from '@/lib/tools/videoMetadata';
+import { findClip, summarizeTimeline, suggestNextAction } from '@/lib/tools/agentTools';
+import { getVideoMetadataForUser, listUploadedVideosForUser } from '@/lib/tools/videoMetadata';
 import { JsonValue, ToolRegistry } from './types';
 
 const errorResponse = (message: string): Record<string, JsonValue> => ({
@@ -10,7 +10,62 @@ const errorResponse = (message: string): Record<string, JsonValue> => ({
 
 export function createToolRegistry(): ToolRegistry {
   return {
-    getVideoMetadata: async (args, context) => {
+    summarize_timeline: async (_args, context) => {
+      const clips = context.clips ?? [];
+      return {
+        status: 'ok',
+        changed: false,
+        output: summarizeTimeline(clips),
+      } as Record<string, JsonValue>;
+    },
+    list_clips: async (_args, context) => {
+      const clips = context.clips ?? [];
+      const userId = context.userId;
+      const enriched = await Promise.all(
+        clips.map(async (clip, index) => {
+          const videoId = clip.videoId ?? clip.id;
+          const metadata = userId
+            ? await getVideoMetadataForUser(videoId, userId)
+            : null;
+          return {
+            index: index + 1,
+            videoId,
+            timestamp: clip.timestamp,
+            duration: clip.duration,
+            metadata,
+          };
+        })
+      );
+      return {
+        status: 'ok',
+        changed: false,
+        output: enriched,
+      } as Record<string, JsonValue>;
+    },
+    find_clip: async (args, context) => {
+      const id = String(args.id ?? '');
+      if (!id) {
+        return errorResponse('Missing clip id.');
+      }
+      const metadata =
+        context.userId ? await getVideoMetadataForUser(id, context.userId) : null;
+      return {
+        status: 'ok',
+        changed: false,
+        output: {
+          details: findClip(context.clips ?? [], id),
+          metadata,
+        },
+      } as Record<string, JsonValue>;
+    },
+    suggest_next_action: async (_args, context) => {
+      return {
+        status: 'ok',
+        changed: false,
+        output: suggestNextAction(context.clips ?? [], context.audioClips ?? []),
+      } as Record<string, JsonValue>;
+    },
+    get_video_metadata: async (args, context) => {
       const videoId = String(args.videoId ?? '');
       if (!videoId) {
         return errorResponse('Missing videoId.');
@@ -28,55 +83,15 @@ export function createToolRegistry(): ToolRegistry {
         output: metadata,
       } as Record<string, JsonValue>;
     },
-    suggestTimelineTips: async (_args, context) => {
-      const aiText = await callGeminiText(
-        [
-          'You are a product assistant for a video editor.',
-          'Return JSON only: {"message":"..."}',
-          `Behavior phase: ${context.behavior.phase}.`,
-          `Event counts: ${JSON.stringify(context.behavior.eventCounts)}.`,
-          'Give one concise tip to help the user edit their timeline.',
-        ].join('\n')
-      );
-
-      const aiResult = parseJsonFromText<{ message?: string }>(aiText);
-      if (!aiResult?.message) {
-        return errorResponse('AI response missing message.');
+    list_uploaded_videos: async (_args, context) => {
+      if (!context.userId) {
+        return errorResponse('Missing user context.');
       }
-
+      const videos = await listUploadedVideosForUser(context.userId);
       return {
         status: 'ok',
         changed: false,
-        output: {
-          message: aiResult.message,
-          phase: context.behavior.phase,
-        },
-      } as Record<string, JsonValue>;
-    },
-    surfaceExportHelp: async (_args, context) => {
-      const failures = context.behavior.eventCounts.export_failed ?? 0;
-      const aiText = await callGeminiText(
-        [
-          'You are an export helper for a video editor.',
-          'Return JSON only: {"message":"..."}',
-          `Behavior phase: ${context.behavior.phase}.`,
-          `Event counts: ${JSON.stringify(context.behavior.eventCounts)}.`,
-          'Provide one actionable suggestion for successful export.',
-        ].join('\n')
-      );
-
-      const aiResult = parseJsonFromText<{ message?: string }>(aiText);
-      if (!aiResult?.message) {
-        return errorResponse('AI response missing message.');
-      }
-
-      return {
-        status: 'ok',
-        changed: false,
-        output: {
-          failures,
-          message: aiResult.message,
-        },
+        output: videos,
       } as Record<string, JsonValue>;
     },
   };
