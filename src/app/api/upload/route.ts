@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 import { prisma } from '@/lib/prisma';
 import { v4 as uuid } from 'uuid';
 
@@ -18,6 +18,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No file provided' }, { status: 400 });
   }
 
+<<<<<<< Updated upstream
+=======
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+>>>>>>> Stashed changes
   const videoId = uuid();
   const filePath = `${user.id}/${videoId}_${file.name}`;
   const buffer = Buffer.from(await file.arrayBuffer());
