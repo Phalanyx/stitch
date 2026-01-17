@@ -1,33 +1,97 @@
 'use client';
 
-import { useState, RefObject } from 'react';
+import { useState, useRef, useEffect, RefObject } from 'react';
 import { Play, Pause } from 'lucide-react';
 import { VideoReference } from '@/types/video';
+import { AudioReference } from '@/types/audio';
 
 interface PreviewProps {
   clips: VideoReference[];
+  audioClips: AudioReference[];
   videoRef: RefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
   currentTime: number;
   onTimeUpdate: (time: number) => void;
+  onSeek: (time: number) => void;
   onDropVideo?: (video: { id: string; url: string; duration?: number }) => void;
 }
 
-export function Preview({ clips, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onDropVideo }: PreviewProps) {
-  const [currentClipIndex, setCurrentClipIndex] = useState(0);
+export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onSeek, onDropVideo }: PreviewProps) {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
+
+  // Create/update audio elements for each audio clip
+  useEffect(() => {
+    audioClips.forEach(clip => {
+      if (!audioRefs.current.has(clip.id)) {
+        const audio = new Audio(clip.url);
+        audioRefs.current.set(clip.id, audio);
+      }
+    });
+    // Cleanup removed clips
+    audioRefs.current.forEach((audio, id) => {
+      if (!audioClips.find(c => c.id === id)) {
+        audio.pause();
+        audioRefs.current.delete(id);
+      }
+    });
+  }, [audioClips]);
+
+  // Sync audio with timeline
+  useEffect(() => {
+    audioClips.forEach(clip => {
+      const audio = audioRefs.current.get(clip.id);
+      if (!audio) return;
+
+      const clipStart = clip.timestamp;
+      const trimStart = clip.trimStart || 0;
+      const visibleDuration = clip.duration - trimStart - (clip.trimEnd || 0);
+      const clipEnd = clipStart + visibleDuration;
+
+      if (currentTime >= clipStart && currentTime < clipEnd) {
+        // Audio should be playing at this time
+        const audioTime = currentTime - clipStart + trimStart;
+        // Only sync if significantly out of sync (to avoid choppy playback)
+        if (Math.abs(audio.currentTime - audioTime) > 0.3) {
+          audio.currentTime = audioTime;
+        }
+        if (isPlaying && audio.paused) {
+          audio.play().catch(() => {
+            // Ignore autoplay errors
+          });
+        }
+        if (!isPlaying && !audio.paused) {
+          audio.pause();
+        }
+      } else {
+        // Audio should not be playing
+        if (!audio.paused) {
+          audio.pause();
+        }
+      }
+    });
+  }, [currentTime, isPlaying, audioClips]);
+
+  // Cleanup all audio on unmount
+  useEffect(() => {
+    return () => {
+      audioRefs.current.forEach(audio => {
+        audio.pause();
+      });
+      audioRefs.current.clear();
+    };
+  }, []);
 
   // Find the clip that contains the current scrubber time
   const activeClip = sortedClips.find(clip => {
     const clipStart = clip.timestamp;
-    const clipEnd = clip.timestamp + clip.duration;
+    const visibleDuration = clip.duration - (clip.trimStart || 0) - (clip.trimEnd || 0);
+    const clipEnd = clipStart + visibleDuration;
     return currentTime >= clipStart && currentTime < clipEnd;
   });
-
-  const currentClip = sortedClips[currentClipIndex];
 
   const handlePlayPause = () => {
     if (!videoRef.current || !activeClip) return;
@@ -41,18 +105,27 @@ export function Preview({ clips, videoRef, isPlaying, setIsPlaying, currentTime,
   };
 
   const handleVideoEnded = () => {
-    if (currentClipIndex < sortedClips.length - 1) {
-      setCurrentClipIndex(currentClipIndex + 1);
+    const currentIndex = sortedClips.findIndex(c => c.id === activeClip?.id);
+    if (currentIndex >= 0 && currentIndex < sortedClips.length - 1) {
+      // Seek to start of next clip
+      const nextClip = sortedClips[currentIndex + 1];
+      onSeek(nextClip.timestamp);
+      // Continue playing
+      if (videoRef.current) {
+        videoRef.current.play();
+      }
     } else {
       setIsPlaying(false);
-      setCurrentClipIndex(0);
+      onSeek(0); // Reset to beginning
     }
   };
 
   const handleTimeUpdate = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !activeClip) return;
     // Calculate global timeline time based on clip timestamp + video time
-    const globalTime = activeClip ? activeClip.timestamp + videoRef.current.currentTime : 0;
+    // video.currentTime includes trimStart offset, so subtract it to get visible clip position
+    const trimStart = activeClip.trimStart || 0;
+    const globalTime = activeClip.timestamp + (videoRef.current.currentTime - trimStart);
     onTimeUpdate(globalTime);
   };
 

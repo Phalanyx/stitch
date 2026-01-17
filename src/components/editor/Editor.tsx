@@ -78,19 +78,27 @@ export function Editor() {
     // Mark that we're seeking to prevent video timeupdate from overriding
     isSeekingRef.current = true;
 
-    // Only sync video if within a valid range
-    if (videoRef.current) {
-      const videoDuration = videoRef.current.duration || 0;
-      if (time <= videoDuration) {
-        videoRef.current.currentTime = time;
-      }
+    // Find the active clip for this time
+    const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
+    const activeClip = sortedClips.find(clip => {
+      const clipStart = clip.timestamp;
+      const visibleDuration = clip.duration - (clip.trimStart || 0) - (clip.trimEnd || 0);
+      const clipEnd = clipStart + visibleDuration;
+      return time >= clipStart && time < clipEnd;
+    });
+
+    if (videoRef.current && activeClip) {
+      // Convert global timeline time to clip-relative video time
+      // The video file position = trimStart + (time offset within visible clip)
+      const clipRelativeTime = time - activeClip.timestamp + (activeClip.trimStart || 0);
+      videoRef.current.currentTime = clipRelativeTime;
     }
 
     // Reset seeking flag after a short delay to allow video timeupdate to be ignored
     setTimeout(() => {
       isSeekingRef.current = false;
     }, 100);
-  }, []);
+  }, [clips]);
 
   const handleTimeUpdate = useCallback((time: number) => {
     // Don't override manual seeks with video's clamped time
@@ -159,11 +167,13 @@ export function Editor() {
         <Sidebar onAddToTimeline={handleAddVideoWithAudio} onAddAudioToTimeline={addAudioToTimeline} />
         <Preview
           clips={clips}
+          audioClips={audioClips}
           videoRef={videoRef}
           isPlaying={isPlaying}
           setIsPlaying={setIsPlaying}
           currentTime={currentTime}
           onTimeUpdate={handleTimeUpdate}
+          onSeek={handleSeek}
           onDropVideo={handleAddVideoWithAudio}
         />
       </div>
