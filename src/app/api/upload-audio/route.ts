@@ -41,7 +41,11 @@ export async function POST(request: NextRequest) {
     .upload(filePath, buffer, { contentType: file.type });
 
   if (uploadError) {
-    return NextResponse.json({ error: uploadError.message }, { status: 500 });
+    console.error('Audio upload error:', uploadError);
+    return NextResponse.json({ 
+      error: uploadError.message || 'Failed to upload audio file',
+      details: uploadError.message 
+    }, { status: 500 });
   }
 
   const { data: { publicUrl } } = supabaseAdmin.storage
