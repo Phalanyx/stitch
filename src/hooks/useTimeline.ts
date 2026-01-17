@@ -5,7 +5,7 @@ import { VideoReference } from '@/types/video';
 import { AudioReference } from '@/types/audio';
 
 export function useTimeline() {
-  const { clips, setClips, addVideoToTimeline, updateVideoTimestamp, removeClip } = useTimelineStore();
+  const { clips, setClips, addVideoToTimeline, addVideoAtTimestamp, updateVideoTimestamp, updateClipTrim, removeClip } = useTimelineStore();
   const { setAudioClips } = useAudioTimelineStore();
   const [isLoading, setIsLoading] = useState(true);
 
@@ -34,7 +34,9 @@ export function useTimeline() {
     clips,
     isLoading,
     addVideoToTimeline,
+    addVideoAtTimestamp,
     updateVideoTimestamp,
+    updateClipTrim,
     removeClip,
   };
 }

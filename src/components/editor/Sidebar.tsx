@@ -274,7 +274,17 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
             {videos.map((video) => (
               <div
                 key={video.id}
-                className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-pointer transition-colors"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('application/json', JSON.stringify({
+                    type: 'video',
+                    id: video.id,
+                    url: video.url,
+                    duration: video.duration,
+                  }));
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
+                className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-grab active:cursor-grabbing transition-colors"
                 onClick={() => handleAddToTimeline(video)}
               >
                 <div className="flex items-center gap-2">
@@ -332,7 +342,17 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
             {audioFiles.map((audio) => (
               <div
                 key={audio.id}
-                className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-pointer transition-colors"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('application/json', JSON.stringify({
+                    type: 'audio',
+                    id: audio.id,
+                    url: audio.url,
+                    duration: audio.duration,
+                  }));
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
+                className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-grab active:cursor-grabbing transition-colors"
                 onClick={() => handleAddAudioToTimeline(audio)}
               >
                 <div className="flex items-center gap-2">

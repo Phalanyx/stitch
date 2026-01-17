@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Film, Music } from 'lucide-react';
 import { TimelineClip } from './TimelineClip';
 import { AudioTimelineClip } from './AudioTimelineClip';
@@ -11,9 +11,13 @@ interface TimelineProps {
   clips: VideoReference[];
   audioClips: AudioReference[];
   onUpdateTimestamp: (id: string, newTime: number) => void;
+  onUpdateTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   onRemove: (id: string) => void;
   onUpdateAudioTimestamp: (id: string, newTime: number) => void;
+  onUpdateAudioTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   onRemoveAudio: (id: string) => void;
+  onDropVideo: (video: { id: string; url: string; duration?: number; timestamp: number }) => void;
+  onDropAudio: (audio: { id: string; url: string; duration?: number; timestamp: number }) => void;
 }
 
 const PIXELS_PER_SECOND = 50;
@@ -23,20 +27,84 @@ export function Timeline({
   clips,
   audioClips,
   onUpdateTimestamp,
+  onUpdateTrim,
   onRemove,
   onUpdateAudioTimestamp,
+  onUpdateAudioTrim,
   onRemoveAudio,
+  onDropVideo,
+  onDropAudio,
 }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isDraggingOverVideo, setIsDraggingOverVideo] = useState(false);
+  const [isDraggingOverAudio, setIsDraggingOverAudio] = useState(false);
 
-  // Calculate total timeline width based on both video and audio clips
+  const handleVideoDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsDraggingOverVideo(true);
+  };
+
+  const handleVideoDragLeave = () => {
+    setIsDraggingOverVideo(false);
+  };
+
+  const handleVideoDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOverVideo(false);
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (data.type === 'video') {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const dropX = e.clientX - rect.left;
+        const timestamp = dropX / PIXELS_PER_SECOND;
+        onDropVideo({ ...data, timestamp });
+      }
+    } catch (err) {
+      console.error('Failed to parse drop data:', err);
+    }
+  };
+
+  const handleAudioDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsDraggingOverAudio(true);
+  };
+
+  const handleAudioDragLeave = () => {
+    setIsDraggingOverAudio(false);
+  };
+
+  const handleAudioDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOverAudio(false);
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (data.type === 'audio') {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const dropX = e.clientX - rect.left;
+        const timestamp = dropX / PIXELS_PER_SECOND;
+        onDropAudio({ ...data, timestamp });
+      }
+    } catch (err) {
+      console.error('Failed to parse drop data:', err);
+    }
+  };
+
+  // Calculate total timeline width based on both video and audio clips (accounting for trim)
   const videoMaxEndTime = clips.reduce((max, clip) => {
-    const endTime = clip.timestamp + clip.duration;
+    const trimStart = clip.trimStart ?? 0;
+    const trimEnd = clip.trimEnd ?? 0;
+    const visibleDuration = clip.duration - trimStart - trimEnd;
+    const endTime = clip.timestamp + visibleDuration;
     return endTime > max ? endTime : max;
   }, 0);
 
   const audioMaxEndTime = audioClips.reduce((max, clip) => {
-    const endTime = clip.timestamp + clip.duration;
+    const trimStart = clip.trimStart ?? 0;
+    const trimEnd = clip.trimEnd ?? 0;
+    const visibleDuration = clip.duration - trimStart - trimEnd;
+    const endTime = clip.timestamp + visibleDuration;
     return endTime > max ? endTime : max;
   }, 0);
 
@@ -84,26 +152,42 @@ export function Timeline({
           </div>
 
           {/* Video track */}
-          <div className="absolute top-6 left-0 right-0 h-20 border-b border-gray-700">
+          <div
+            className={`absolute top-6 left-0 right-0 h-20 border-b border-gray-700 transition-colors ${
+              isDraggingOverVideo ? 'bg-blue-500/20' : ''
+            }`}
+            onDragOver={handleVideoDragOver}
+            onDragLeave={handleVideoDragLeave}
+            onDrop={handleVideoDrop}
+          >
             {clips.map((clip) => (
               <TimelineClip
                 key={clip.id}
                 clip={clip}
                 pixelsPerSecond={PIXELS_PER_SECOND}
                 onUpdateTimestamp={onUpdateTimestamp}
+                onUpdateTrim={onUpdateTrim}
                 onRemove={onRemove}
               />
             ))}
           </div>
 
           {/* Audio track */}
-          <div className="absolute top-[104px] left-0 right-0 h-16">
+          <div
+            className={`absolute top-[104px] left-0 right-0 h-16 transition-colors ${
+              isDraggingOverAudio ? 'bg-green-500/20' : ''
+            }`}
+            onDragOver={handleAudioDragOver}
+            onDragLeave={handleAudioDragLeave}
+            onDrop={handleAudioDrop}
+          >
             {audioClips.map((clip) => (
               <AudioTimelineClip
                 key={clip.id}
                 clip={clip}
                 pixelsPerSecond={PIXELS_PER_SECOND}
                 onUpdateTimestamp={onUpdateAudioTimestamp}
+                onUpdateTrim={onUpdateAudioTrim}
                 onRemove={onRemoveAudio}
               />
             ))}

@@ -32,6 +32,11 @@ export function Preview({ clips, audioClips }: PreviewProps) {
     let currentTime = 0;
 
     sortedClips.forEach(clip => {
+      // Calculate visible duration after trimming
+      const trimStart = clip.trimStart ?? 0;
+      const trimEnd = clip.trimEnd ?? 0;
+      const visibleDuration = clip.duration - trimStart - trimEnd;
+
       // Add gap if there's space before this clip
       if (clip.timestamp > currentTime) {
         segments.push({
@@ -42,24 +47,27 @@ export function Preview({ clips, audioClips }: PreviewProps) {
         currentTime = clip.timestamp;
       }
 
-      // Add clip
+      // Add clip with visible duration
       segments.push({
         type: 'clip',
         clip,
         start: clip.timestamp,
-        duration: clip.duration,
+        duration: visibleDuration,
       });
 
-      currentTime = clip.timestamp + clip.duration;
+      currentTime = clip.timestamp + visibleDuration;
     });
 
     const videoTotalDuration = segments.length > 0
       ? segments[segments.length - 1].start + segments[segments.length - 1].duration
       : 0;
 
-    // Consider audio clips for total duration
+    // Consider audio clips for total duration (accounting for trim)
     const audioMaxEndTime = audioClips.reduce((max, clip) => {
-      const endTime = clip.timestamp + clip.duration;
+      const trimStart = clip.trimStart ?? 0;
+      const trimEnd = clip.trimEnd ?? 0;
+      const visibleDuration = clip.duration - trimStart - trimEnd;
+      const endTime = clip.timestamp + visibleDuration;
       return endTime > max ? endTime : max;
     }, 0);
 
@@ -135,11 +143,13 @@ export function Preview({ clips, audioClips }: PreviewProps) {
     if (!video) return;
 
     const clipStartInTimeline = currentSegment.start;
-    const relativeTime = timelineTime - clipStartInTimeline;
+    const trimStart = currentSegment.clip.trimStart ?? 0;
+    // Account for trim: relative time within visible portion + trimStart offset
+    const relativeTime = timelineTime - clipStartInTimeline + trimStart;
 
     // Update video current time to match timeline position
     if (Math.abs(video.currentTime - relativeTime) > 0.1) {
-      video.currentTime = Math.max(0, Math.min(relativeTime, currentSegment.duration));
+      video.currentTime = Math.max(trimStart, Math.min(relativeTime, currentSegment.clip.duration - (currentSegment.clip.trimEnd ?? 0)));
     }
 
     // Play or pause video based on playing state
@@ -199,15 +209,19 @@ export function Preview({ clips, audioClips }: PreviewProps) {
       const audio = audioMap.get(clip.id);
       if (!audio) return;
 
-      const clipEnd = clip.timestamp + clip.duration;
+      const trimStart = clip.trimStart ?? 0;
+      const trimEnd = clip.trimEnd ?? 0;
+      const visibleDuration = clip.duration - trimStart - trimEnd;
+      const clipEnd = clip.timestamp + visibleDuration;
       const isInRange = time >= clip.timestamp && time < clipEnd;
 
       if (isInRange) {
-        const relativeTime = time - clip.timestamp;
+        // Account for trim: relative time + trimStart offset
+        const relativeTime = time - clip.timestamp + trimStart;
 
         // Sync time if significantly out of sync
         if (Math.abs(audio.currentTime - relativeTime) > 0.1) {
-          audio.currentTime = Math.max(0, relativeTime);
+          audio.currentTime = Math.max(trimStart, relativeTime);
         }
 
         // Play or pause based on playing state

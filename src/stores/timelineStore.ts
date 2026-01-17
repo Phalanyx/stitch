@@ -7,7 +7,9 @@ interface TimelineState {
 
   normalizeClips: (clips: VideoReference[]) => { clips: VideoReference[]; changed: boolean };
   addVideoToTimeline: (video: { id: string; url: string; duration?: number }) => void;
+  addVideoAtTimestamp: (video: { id: string; url: string; duration?: number }, timestamp: number) => void;
   updateVideoTimestamp: (id: string, newTime: number) => void;
+  updateClipTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   removeClip: (id: string) => void;
   setClips: (clips: VideoReference[]) => void;
   markSaved: () => void;
@@ -64,10 +66,37 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     });
   },
 
+  addVideoAtTimestamp: (video, timestamp) => {
+    const { clips } = get();
+    const clipId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    set({
+      clips: [...clips, {
+        id: clipId,
+        videoId: video.id,
+        url: video.url,
+        timestamp: Math.max(0, timestamp),
+        duration: video.duration || 5,
+      }],
+      isDirty: true,
+    });
+  },
+
   updateVideoTimestamp: (id, newTime) => {
     set((state) => ({
       clips: state.clips.map((clip) =>
         clip.id === id ? { ...clip, timestamp: Math.max(0, newTime) } : clip
+      ),
+      isDirty: true,
+    }));
+  },
+
+  updateClipTrim: (id, updates) => {
+    set((state) => ({
+      clips: state.clips.map((clip) =>
+        clip.id === id ? { ...clip, ...updates } : clip
       ),
       isDirty: true,
     }));

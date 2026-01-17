@@ -4,6 +4,8 @@ export interface VideoReference {
   url: string;
   timestamp: number;
   duration: number;
+  trimStart?: number;  // Seconds trimmed from start (default 0)
+  trimEnd?: number;    // Seconds trimmed from end (default 0)
 }
 
 export interface VideoMetadata {

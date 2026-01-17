@@ -8,6 +8,7 @@ interface AudioTimelineClipProps {
   clip: AudioReference;
   pixelsPerSecond: number;
   onUpdateTimestamp: (id: string, newTime: number) => void;
+  onUpdateTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   onRemove: (id: string) => void;
 }
 
@@ -15,12 +16,19 @@ export function AudioTimelineClip({
   clip,
   pixelsPerSecond,
   onUpdateTimestamp,
+  onUpdateTrim,
   onRemove,
 }: AudioTimelineClipProps) {
   const clipRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const dragStartX = useRef(0);
   const initialTimestamp = useRef(0);
+
+  // Calculate visible duration after trimming
+  const trimStart = clip.trimStart ?? 0;
+  const trimEnd = clip.trimEnd ?? 0;
+  const visibleDuration = clip.duration - trimStart - trimEnd;
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -44,33 +52,111 @@ export function AudioTimelineClip({
     document.addEventListener('mouseup', handleMouseUp);
   };
 
+  const handleLeftResize = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsResizing(true);
+
+    const startX = e.clientX;
+    const startTrimStart = clip.trimStart ?? 0;
+    const startTimestamp = clip.timestamp;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - startX;
+      const deltaTime = deltaX / pixelsPerSecond;
+
+      const newTrimStart = Math.max(0, startTrimStart + deltaTime);
+      const maxTrim = clip.duration - (clip.trimEnd ?? 0) - 0.1; // Keep min 0.1s visible
+      const clampedTrimStart = Math.min(newTrimStart, maxTrim);
+
+      const newTimestamp = startTimestamp + (clampedTrimStart - startTrimStart);
+
+      onUpdateTrim(clip.id, { trimStart: clampedTrimStart, timestamp: newTimestamp });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleRightResize = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsResizing(true);
+
+    const startX = e.clientX;
+    const startTrimEnd = clip.trimEnd ?? 0;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - startX;
+      const deltaTime = -deltaX / pixelsPerSecond; // Negative because right drag = less trimEnd
+
+      const newTrimEnd = Math.max(0, startTrimEnd + deltaTime);
+      const maxTrim = clip.duration - (clip.trimStart ?? 0) - 0.1; // Keep min 0.1s visible
+      const clampedTrimEnd = Math.min(newTrimEnd, maxTrim);
+
+      onUpdateTrim(clip.id, { trimEnd: clampedTrimEnd });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   const left = clip.timestamp * pixelsPerSecond;
-  const width = clip.duration * pixelsPerSecond;
+  const width = visibleDuration * pixelsPerSecond;
 
   return (
     <div
       ref={clipRef}
-      className={`absolute top-2 h-12 rounded-md bg-green-600 cursor-grab flex items-center justify-between px-2 ${
+      className={`absolute top-2 h-12 rounded-md bg-green-600 flex items-center ${
         isDragging ? 'cursor-grabbing opacity-80' : ''
-      }`}
-      style={{ left: `${left}px`, width: `${width}px` }}
-      onMouseDown={handleMouseDown}
+      } ${isResizing ? 'opacity-90' : ''}`}
+      style={{ left: `${left}px`, width: `${width}px`, minWidth: '20px' }}
     >
-      <div className="flex items-center gap-1 flex-1 min-w-0">
-        <Music size={12} className="text-white/80 flex-shrink-0" />
-        <span className="text-white text-xs truncate">
-          {(clip.audioId ?? clip.id).slice(0, 8)}...
-        </span>
-      </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove(clip.id);
-        }}
-        className="text-white/70 hover:text-white ml-1 flex-shrink-0"
+      {/* Left resize handle */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-green-700 hover:bg-green-500 rounded-l-md"
+        onMouseDown={handleLeftResize}
+      />
+
+      {/* Clip content */}
+      <div
+        className="flex-1 flex items-center justify-between px-3 cursor-grab min-w-0"
+        onMouseDown={handleMouseDown}
       >
-        <X size={14} />
-      </button>
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <Music size={12} className="text-white/80 flex-shrink-0" />
+          <span className="text-white text-xs truncate">
+            {(clip.audioId ?? clip.id).slice(0, 8)}...
+          </span>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(clip.id);
+          }}
+          className="text-white/70 hover:text-white ml-1 flex-shrink-0"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Right resize handle */}
+      <div
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-green-700 hover:bg-green-500 rounded-r-md"
+        onMouseDown={handleRightResize}
+      />
     </div>
   );
 }

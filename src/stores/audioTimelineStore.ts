@@ -7,7 +7,9 @@ interface AudioTimelineState {
 
   normalizeClips: (clips: AudioReference[]) => { clips: AudioReference[]; changed: boolean };
   addAudioToTimeline: (audio: { id: string; url: string; duration?: number }) => void;
+  addAudioAtTimestamp: (audio: { id: string; url: string; duration?: number }, timestamp: number) => void;
   updateAudioTimestamp: (id: string, newTime: number) => void;
+  updateAudioClipTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   removeAudioClip: (id: string) => void;
   setAudioClips: (clips: AudioReference[]) => void;
   markSaved: () => void;
@@ -62,10 +64,37 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
     });
   },
 
+  addAudioAtTimestamp: (audio, timestamp) => {
+    const { audioClips } = get();
+    const clipId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    set({
+      audioClips: [...audioClips, {
+        id: clipId,
+        audioId: audio.id,
+        url: audio.url,
+        timestamp: Math.max(0, timestamp),
+        duration: audio.duration || 5,
+      }],
+      isDirty: true,
+    });
+  },
+
   updateAudioTimestamp: (id, newTime) => {
     set((state) => ({
       audioClips: state.audioClips.map((clip) =>
         clip.id === id ? { ...clip, timestamp: Math.max(0, newTime) } : clip
+      ),
+      isDirty: true,
+    }));
+  },
+
+  updateAudioClipTrim: (id, updates) => {
+    set((state) => ({
+      audioClips: state.audioClips.map((clip) =>
+        clip.id === id ? { ...clip, ...updates } : clip
       ),
       isDirty: true,
     }));

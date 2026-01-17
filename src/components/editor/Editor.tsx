@@ -9,10 +9,36 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { Loader2 } from 'lucide-react';
 
 export function Editor() {
-  const { clips, isLoading, addVideoToTimeline, updateVideoTimestamp, removeClip } =
+  const { clips, isLoading, addVideoToTimeline, addVideoAtTimestamp, updateVideoTimestamp, updateClipTrim, removeClip } =
     useTimeline();
-  const { audioClips, addAudioToTimeline, updateAudioTimestamp, removeAudioClip } =
+  const { audioClips, addAudioToTimeline, addAudioAtTimestamp, updateAudioTimestamp, updateAudioClipTrim, removeAudioClip } =
     useAudioTimelineStore();
+
+  // Combined handler that adds both video and audio clips when a video is added
+  const handleAddVideoWithAudio = (video: { id: string; url: string; duration?: number }) => {
+    addVideoToTimeline(video);
+    // Add corresponding audio clip from the same video file
+    addAudioToTimeline({
+      id: video.id,
+      url: video.url,
+      duration: video.duration,
+    });
+  };
+
+  // Drop handlers for drag and drop onto timeline
+  const handleDropVideo = (video: { id: string; url: string; duration?: number; timestamp: number }) => {
+    addVideoAtTimestamp(video, video.timestamp);
+    // Also add audio at the same timestamp
+    addAudioAtTimestamp({
+      id: video.id,
+      url: video.url,
+      duration: video.duration,
+    }, video.timestamp);
+  };
+
+  const handleDropAudio = (audio: { id: string; url: string; duration?: number; timestamp: number }) => {
+    addAudioAtTimestamp(audio, audio.timestamp);
+  };
 
   // Enable auto-save
   useAutoSave();
@@ -29,7 +55,7 @@ export function Editor() {
     <div className="h-screen bg-gray-900 flex flex-col">
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
-          onAddToTimeline={addVideoToTimeline}
+          onAddToTimeline={handleAddVideoWithAudio}
           onAddAudioToTimeline={addAudioToTimeline}
         />
         <Preview clips={clips} audioClips={audioClips} />
@@ -38,9 +64,13 @@ export function Editor() {
         clips={clips}
         audioClips={audioClips}
         onUpdateTimestamp={updateVideoTimestamp}
+        onUpdateTrim={updateClipTrim}
         onRemove={removeClip}
         onUpdateAudioTimestamp={updateAudioTimestamp}
+        onUpdateAudioTrim={updateAudioClipTrim}
         onRemoveAudio={removeAudioClip}
+        onDropVideo={handleDropVideo}
+        onDropAudio={handleDropAudio}
       />
     </div>
   );
