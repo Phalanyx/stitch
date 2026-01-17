@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 import { VideoReference } from '@/types/video';
+import {
+  findNearestValidPosition,
+  isPositionValid as checkPositionValid,
+  getValidPosition as computeValidPosition,
+  TimelineClip,
+} from '@/lib/timeline-validation';
 
 interface TimelineState {
   clips: VideoReference[];
@@ -14,6 +20,9 @@ interface TimelineState {
   removeClipsByVideoId: (videoId: string) => void;
   setClips: (clips: VideoReference[]) => void;
   markSaved: () => void;
+  // Overlap validation helpers
+  isPositionValid: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number) => boolean;
+  getValidPosition: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number) => number;
 }
 
 export const useTimelineStore = create<TimelineState>((set, get) => ({
@@ -73,31 +82,78 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       ? crypto.randomUUID()
       : `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+    const duration = video.duration || 5;
+    const newClip: TimelineClip = {
+      id: clipId,
+      timestamp: Math.max(0, timestamp),
+      duration,
+    };
+
+    // Find valid position that doesn't overlap with existing clips
+    const validTimestamp = findNearestValidPosition(clips as TimelineClip[], newClip);
+
     set({
       clips: [...clips, {
         id: clipId,
         videoId: video.id,
         url: video.url,
-        timestamp: Math.max(0, timestamp),
-        duration: video.duration || 5,
+        timestamp: validTimestamp,
+        duration,
       }],
       isDirty: true,
     });
   },
 
   updateVideoTimestamp: (id, newTime) => {
+    const { clips } = get();
+    const clip = clips.find((c) => c.id === id);
+    if (!clip) return;
+
+    const testClip: TimelineClip = {
+      id,
+      timestamp: Math.max(0, newTime),
+      duration: clip.duration,
+      trimStart: clip.trimStart,
+      trimEnd: clip.trimEnd,
+    };
+
+    // Find valid position that doesn't overlap with other clips
+    const validTimestamp = findNearestValidPosition(clips as TimelineClip[], testClip, id);
+
     set((state) => ({
-      clips: state.clips.map((clip) =>
-        clip.id === id ? { ...clip, timestamp: Math.max(0, newTime) } : clip
+      clips: state.clips.map((c) =>
+        c.id === id ? { ...c, timestamp: validTimestamp } : c
       ),
       isDirty: true,
     }));
   },
 
   updateClipTrim: (id, updates) => {
+    const { clips } = get();
+    const clip = clips.find((c) => c.id === id);
+    if (!clip) return;
+
+    // Apply updates to create test clip
+    const newTrimStart = updates.trimStart ?? clip.trimStart ?? 0;
+    const newTrimEnd = updates.trimEnd ?? clip.trimEnd ?? 0;
+    const newTimestamp = updates.timestamp ?? clip.timestamp;
+
+    const testClip: TimelineClip = {
+      id,
+      timestamp: newTimestamp,
+      duration: clip.duration,
+      trimStart: newTrimStart,
+      trimEnd: newTrimEnd,
+    };
+
+    // Find valid position if the trim caused an overlap
+    const validTimestamp = findNearestValidPosition(clips as TimelineClip[], testClip, id);
+
     set((state) => ({
-      clips: state.clips.map((clip) =>
-        clip.id === id ? { ...clip, ...updates } : clip
+      clips: state.clips.map((c) =>
+        c.id === id
+          ? { ...c, ...updates, timestamp: validTimestamp }
+          : c
       ),
       isDirty: true,
     }));
@@ -123,4 +179,15 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     set({ clips: normalized, isDirty: changed });
   },
   markSaved: () => set({ isDirty: false }),
+
+  // Overlap validation helpers for UI feedback
+  isPositionValid: (clipId, timestamp, duration, trimStart, trimEnd) => {
+    const { clips } = get();
+    return checkPositionValid(clips as TimelineClip[], clipId, timestamp, duration, trimStart, trimEnd);
+  },
+
+  getValidPosition: (clipId, timestamp, duration, trimStart, trimEnd) => {
+    const { clips } = get();
+    return computeValidPosition(clips as TimelineClip[], clipId, timestamp, duration, trimStart, trimEnd);
+  },
 }));

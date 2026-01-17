@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 import { AudioReference } from '@/types/audio';
+import {
+  findNearestValidPosition,
+  isPositionValid as checkPositionValid,
+  getValidPosition as computeValidPosition,
+  TimelineClip,
+} from '@/lib/timeline-validation';
 
 interface AudioTimelineState {
   audioClips: AudioReference[];
@@ -14,6 +20,9 @@ interface AudioTimelineState {
   removeClipsByAudioId: (audioId: string) => void;
   setAudioClips: (clips: AudioReference[]) => void;
   markSaved: () => void;
+  // Overlap validation helpers
+  isPositionValid: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number) => boolean;
+  getValidPosition: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number) => number;
 }
 
 export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
@@ -71,31 +80,78 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
       ? crypto.randomUUID()
       : `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+    const duration = audio.duration || 5;
+    const newClip: TimelineClip = {
+      id: clipId,
+      timestamp: Math.max(0, timestamp),
+      duration,
+    };
+
+    // Find valid position that doesn't overlap with existing clips
+    const validTimestamp = findNearestValidPosition(audioClips as TimelineClip[], newClip);
+
     set({
       audioClips: [...audioClips, {
         id: clipId,
         audioId: audio.id,
         url: audio.url,
-        timestamp: Math.max(0, timestamp),
-        duration: audio.duration || 5,
+        timestamp: validTimestamp,
+        duration,
       }],
       isDirty: true,
     });
   },
 
   updateAudioTimestamp: (id, newTime) => {
+    const { audioClips } = get();
+    const clip = audioClips.find((c) => c.id === id);
+    if (!clip) return;
+
+    const testClip: TimelineClip = {
+      id,
+      timestamp: Math.max(0, newTime),
+      duration: clip.duration,
+      trimStart: clip.trimStart,
+      trimEnd: clip.trimEnd,
+    };
+
+    // Find valid position that doesn't overlap with other clips
+    const validTimestamp = findNearestValidPosition(audioClips as TimelineClip[], testClip, id);
+
     set((state) => ({
-      audioClips: state.audioClips.map((clip) =>
-        clip.id === id ? { ...clip, timestamp: Math.max(0, newTime) } : clip
+      audioClips: state.audioClips.map((c) =>
+        c.id === id ? { ...c, timestamp: validTimestamp } : c
       ),
       isDirty: true,
     }));
   },
 
   updateAudioClipTrim: (id, updates) => {
+    const { audioClips } = get();
+    const clip = audioClips.find((c) => c.id === id);
+    if (!clip) return;
+
+    // Apply updates to create test clip
+    const newTrimStart = updates.trimStart ?? clip.trimStart ?? 0;
+    const newTrimEnd = updates.trimEnd ?? clip.trimEnd ?? 0;
+    const newTimestamp = updates.timestamp ?? clip.timestamp;
+
+    const testClip: TimelineClip = {
+      id,
+      timestamp: newTimestamp,
+      duration: clip.duration,
+      trimStart: newTrimStart,
+      trimEnd: newTrimEnd,
+    };
+
+    // Find valid position if the trim caused an overlap
+    const validTimestamp = findNearestValidPosition(audioClips as TimelineClip[], testClip, id);
+
     set((state) => ({
-      audioClips: state.audioClips.map((clip) =>
-        clip.id === id ? { ...clip, ...updates } : clip
+      audioClips: state.audioClips.map((c) =>
+        c.id === id
+          ? { ...c, ...updates, timestamp: validTimestamp }
+          : c
       ),
       isDirty: true,
     }));
@@ -122,4 +178,15 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
   },
 
   markSaved: () => set({ isDirty: false }),
+
+  // Overlap validation helpers for UI feedback
+  isPositionValid: (clipId, timestamp, duration, trimStart, trimEnd) => {
+    const { audioClips } = get();
+    return checkPositionValid(audioClips as TimelineClip[], clipId, timestamp, duration, trimStart, trimEnd);
+  },
+
+  getValidPosition: (clipId, timestamp, duration, trimStart, trimEnd) => {
+    const { audioClips } = get();
+    return computeValidPosition(audioClips as TimelineClip[], clipId, timestamp, duration, trimStart, trimEnd);
+  },
 }));

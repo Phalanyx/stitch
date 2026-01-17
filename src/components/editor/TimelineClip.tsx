@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { VideoReference } from '@/types/video';
+import { useTimelineStore } from '@/stores/timelineStore';
 
 const SNAP_INCREMENT = 0.05;
 const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) * SNAP_INCREMENT;
@@ -25,8 +26,11 @@ export function TimelineClip({
   const clipRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [isPositionInvalid, setIsPositionInvalid] = useState(false);
   const dragStartX = useRef(0);
   const initialTimestamp = useRef(0);
+
+  const isPositionValid = useTimelineStore((state) => state.isPositionValid);
 
   // Calculate visible duration after trimming
   const trimStart = clip.trimStart ?? 0;
@@ -42,11 +46,18 @@ export function TimelineClip({
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - dragStartX.current;
       const deltaTime = deltaX / pixelsPerSecond;
-      onUpdateTimestamp(clip.id, snapToGrid(initialTimestamp.current + deltaTime));
+      const newTimestamp = snapToGrid(initialTimestamp.current + deltaTime);
+
+      // Check if the position would be valid
+      const valid = isPositionValid(clip.id, newTimestamp, clip.duration, clip.trimStart, clip.trimEnd);
+      setIsPositionInvalid(!valid);
+
+      onUpdateTimestamp(clip.id, newTimestamp);
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      setIsPositionInvalid(false);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
@@ -122,9 +133,11 @@ export function TimelineClip({
   return (
     <div
       ref={clipRef}
-      className={`absolute top-2 h-16 rounded-md bg-blue-500 flex items-center ${
-        isDragging ? 'cursor-grabbing opacity-80' : ''
-      } ${isResizing ? 'opacity-90' : ''}`}
+      className={`absolute top-2 h-16 rounded-md flex items-center ${
+        isPositionInvalid
+          ? 'bg-red-500 ring-2 ring-red-300'
+          : 'bg-blue-500'
+      } ${isDragging ? 'cursor-grabbing opacity-80' : ''} ${isResizing ? 'opacity-90' : ''}`}
       style={{ left: `${left}px`, width: `${width}px`, minWidth: '20px' }}
     >
       {/* Left resize handle */}

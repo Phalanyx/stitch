@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { validateTrack, TimelineClip } from '@/lib/timeline-validation';
 
 // GET: Fetch user's timeline session
 export async function GET() {
@@ -45,6 +46,30 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const { session_video, session_audio } = body;
+
+  // Validate video track for overlaps
+  if (session_video !== undefined && Array.isArray(session_video)) {
+    const videoViolations = validateTrack(session_video as TimelineClip[]);
+    if (videoViolations.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'OVERLAPPING_CLIPS',
+        details: { track: 'video', violations: videoViolations },
+      }, { status: 400 });
+    }
+  }
+
+  // Validate audio track for overlaps
+  if (session_audio !== undefined && Array.isArray(session_audio)) {
+    const audioViolations = validateTrack(session_audio as TimelineClip[]);
+    if (audioViolations.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'OVERLAPPING_CLIPS',
+        details: { track: 'audio', violations: audioViolations },
+      }, { status: 400 });
+    }
+  }
 
   const updateData: { sessionVideo?: object; sessionAudio?: object } = {};
   if (session_video !== undefined) {
