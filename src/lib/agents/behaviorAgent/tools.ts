@@ -1,5 +1,6 @@
 import { findClip, summarizeTimeline, suggestNextAction } from '@/lib/tools/agentTools';
 import { getVideoMetadataForUser, listUploadedVideosForUser } from '@/lib/tools/videoMetadata';
+import { textToSpeechAndSave } from '@/lib/elevenlabs';
 import { JsonValue, ToolRegistry } from './types';
 
 const errorResponse = (message: string): Record<string, JsonValue> => ({
