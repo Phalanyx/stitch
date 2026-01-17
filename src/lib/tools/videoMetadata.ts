@@ -14,7 +14,7 @@ export async function getVideoMetadataForUser(videoId: string, userId: string) {
     fileName: video.fileName,
     summary: video.summary,
     duration: video.duration,
-    status: video.status,
+    status: video.twelveLabsStatus,
     url: video.url,
   };
 }

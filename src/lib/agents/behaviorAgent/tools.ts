@@ -104,7 +104,10 @@ export function createToolRegistry(): ToolRegistry {
         return {
           status: 'ok',
           changed: true,
-          output: audio,
+          output: {
+            ...audio,
+            createdAt: audio.createdAt.toISOString(),
+          },
         } as Record<string, JsonValue>;
       } catch (error) {
         return errorResponse(

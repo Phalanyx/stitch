@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Send } from 'lucide-react';
 import { VideoReference } from '@/types/video';
 
@@ -96,13 +96,13 @@ export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') sendMessage();
+            if (event.key === 'Enter') handleSend();
           }}
           placeholder="Ask about your timeline..."
           className="flex-1 bg-gray-800 text-gray-100 text-sm px-2 py-1 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
-          onClick={sendMessage}
+          onClick={handleSend}
           disabled={isSending}
           className="p-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
           aria-label="Send message"

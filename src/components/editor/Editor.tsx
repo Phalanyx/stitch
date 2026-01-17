@@ -241,6 +241,9 @@ export function Editor() {
     addAudioAtTimestamp({ ...audio, duration }, timestamp);
   }, [addLayer, addAudioAtTimestamp]);
 
+  // Derive audioClips from audioLayers for ChatAgent
+  const audioClips = audioLayers.flatMap(layer => layer.clips);
+
   if (isLoading) {
     return (
       <div className="h-screen bg-gray-900 flex items-center justify-center">
@@ -270,7 +273,7 @@ export function Editor() {
           onDropVideo={handleAddVideoWithAudio}
           isSeekingRef={isSeekingRef}
         />
-        <ChatAgent clips={clips} audioClips={audioClips} onAudioCreated={handleAudioCreated} />
+        <ChatAgent clips={clips} audioClips={audioClips} />
       </div>
       <Timeline
         clips={clips}

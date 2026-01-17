@@ -340,7 +340,6 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
       const trimStart = currentActiveClip.trimStart || 0;
       const trimEnd = currentActiveClip.trimEnd || 0;
       const clipStart = currentActiveClip.timestamp;
-      const visibleDuration = currentActiveClip.duration - trimStart - trimEnd;
       
       // Check if we've reached the start of current clip
       if (newGlobalTime <= clipStart + 0.01) {
