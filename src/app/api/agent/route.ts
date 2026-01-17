@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server';
 type AgentRequest = {
   events: EventRecord[];
   memory?: MemoryState;
+  prompt?: string;
 };
 
 export async function POST(request: NextRequest) {
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
     const tools = createToolRegistry();
     const memory = body.memory ?? createMemory();
 
-    const output = await runBehaviorAgent(body.events, tools, memory, user.id);
+    const output = await runBehaviorAgent(body.events, tools, memory, user.id, body.prompt);
 
     return NextResponse.json(output);
   } catch (error) {

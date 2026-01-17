@@ -37,6 +37,7 @@ export type ToolResult = {
   ok: boolean;
   output?: JsonValue;
   error?: string;
+  changed?: boolean;
 };
 
 export type ToolRegistry = Record<

@@ -1,86 +1,83 @@
-import { callGeminiText } from '@/lib/ai/gemini';
+import { callGeminiText, parseJsonFromText } from '@/lib/ai/gemini';
 import { getVideoMetadataForUser } from '@/lib/tools/videoMetadata';
-import { ToolRegistry } from './types';
+import { JsonValue, ToolRegistry } from './types';
+
+const errorResponse = (message: string): Record<string, JsonValue> => ({
+  status: 'error',
+  changed: false,
+  error: message,
+});
 
 export function createToolRegistry(): ToolRegistry {
   return {
     getVideoMetadata: async (args, context) => {
       const videoId = String(args.videoId ?? '');
       if (!videoId) {
-        return { error: 'Missing videoId.' };
+        return errorResponse('Missing videoId.');
       }
       if (!context.userId) {
-        return { error: 'Missing user context.' };
+        return errorResponse('Missing user context.');
       }
       const metadata = await getVideoMetadataForUser(videoId, context.userId);
-      return metadata ?? { error: `No video metadata found for id ${videoId}.` };
+      if (!metadata) {
+        return errorResponse(`No video metadata found for id ${videoId}.`);
+      }
+      return {
+        status: 'ok',
+        changed: false,
+        output: metadata,
+      } as Record<string, JsonValue>;
     },
     suggestTimelineTips: async (_args, context) => {
-      const added = context.behavior.eventCounts.clip_added ?? 0;
-      const moved = context.behavior.eventCounts.clip_moved ?? 0;
-      const tip =
-        added === 0
-          ? 'Try adding a clip from the media library to start building your timeline.'
-          : moved === 0
-          ? 'Tip: drag clips to reposition them on the timeline.'
-          : 'Tip: use preview to check pacing after edits.';
-
       const aiText = await callGeminiText(
         [
           'You are a product assistant for a video editor.',
+          'Return JSON only: {"message":"..."}',
           `Behavior phase: ${context.behavior.phase}.`,
           `Event counts: ${JSON.stringify(context.behavior.eventCounts)}.`,
           'Give one concise tip to help the user edit their timeline.',
         ].join('\n')
       );
 
-      return {
-        message: aiText ?? tip,
-        phase: context.behavior.phase,
-      };
-    },
-    analyzePlaybackFriction: async (_args, context) => {
-      const seeks = context.behavior.eventCounts.preview_seek ?? 0;
-      const pauses = context.behavior.eventCounts.preview_pause ?? 0;
-      const frictionScore = Math.min(1, (seeks + pauses) / 10);
-
-      const aiText = await callGeminiText(
-        [
-          'You are an analytics assistant.',
-          `Behavior phase: ${context.behavior.phase}.`,
-          `Event counts: ${JSON.stringify(context.behavior.eventCounts)}.`,
-          'Summarize playback friction in one sentence.',
-        ].join('\n')
-      );
+      const aiResult = parseJsonFromText<{ message?: string }>(aiText);
+      if (!aiResult?.message) {
+        return errorResponse('AI response missing message.');
+      }
 
       return {
-        frictionScore,
-        insight:
-          aiText ??
-          (frictionScore > 0.6
-            ? 'User is scrubbing/pausing frequently; consider suggesting timeline adjustments.'
-            : 'Playback looks smooth; no intervention needed.'),
-      };
+        status: 'ok',
+        changed: false,
+        output: {
+          message: aiResult.message,
+          phase: context.behavior.phase,
+        },
+      } as Record<string, JsonValue>;
     },
     surfaceExportHelp: async (_args, context) => {
       const failures = context.behavior.eventCounts.export_failed ?? 0;
       const aiText = await callGeminiText(
         [
           'You are an export helper for a video editor.',
+          'Return JSON only: {"message":"..."}',
           `Behavior phase: ${context.behavior.phase}.`,
           `Event counts: ${JSON.stringify(context.behavior.eventCounts)}.`,
           'Provide one actionable suggestion for successful export.',
         ].join('\n')
       );
 
+      const aiResult = parseJsonFromText<{ message?: string }>(aiText);
+      if (!aiResult?.message) {
+        return errorResponse('AI response missing message.');
+      }
+
       return {
-        failures,
-        message:
-          aiText ??
-          (failures > 0
-            ? 'Export failed recently. Suggest checking file format or trying a shorter clip.'
-            : 'Export in progress. Consider showing a progress indicator.'),
-      };
+        status: 'ok',
+        changed: false,
+        output: {
+          failures,
+          message: aiResult.message,
+        },
+      } as Record<string, JsonValue>;
     },
   };
 }
