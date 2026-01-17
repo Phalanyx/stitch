@@ -167,32 +167,14 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
         clipId: activeClip.id.slice(0, 8)
       });
       videoRef.current.currentTime = targetTime;
+
+      // Stop reverse playback when clip changes
+      stopReversePlayback();
+
       if (isPlaying) {
         videoRef.current.play()
           .then(() => console.log('[Clip] play() succeeded'))
           .catch((e) => console.log('[Clip] play() error:', e));
-      
-      // Stop reverse playback when clip changes
-      stopReversePlayback();
-      
-      prevActiveClipIdRef.current = activeClip.id;
-
-      const handleLoadedMetadata = () => {
-        if (!videoRef.current) return;
-        const trimStart = activeClip.trimStart || 0;
-        const timeWithinClip = currentTime - activeClip.timestamp;
-        const videoTime = trimStart + timeWithinClip;
-        const maxVideoTime = activeClip.duration - (activeClip.trimEnd || 0);
-        videoRef.current.currentTime = Math.max(trimStart, Math.min(videoTime, maxVideoTime));
-        // Reset playback rate to forward when clip changes
-        videoRef.current.playbackRate = 1;
-        if (isPlaying) videoRef.current.play().catch(() => {});
-      };
-
-      if (videoRef.current.readyState >= 1) {
-        handleLoadedMetadata();
-      } else {
-        videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
       }
     };
 
@@ -591,18 +573,13 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
             className="max-h-full max-w-full"
             muted
             onEnded={handleVideoEnded}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => {
-              if (!isTransitioningRef.current) {
             onPlay={() => {
-              // Only update if not in reverse mode (reverse mode manages its own state)
               if (!isPlayingReverseRef.current) {
                 setIsPlaying(true);
               }
             }}
             onPause={() => {
-              // Only update if not in reverse mode (reverse mode manages its own state)
-              if (!isPlayingReverseRef.current) {
+              if (!isPlayingReverseRef.current && !isTransitioningRef.current) {
                 setIsPlaying(false);
               }
             }}
