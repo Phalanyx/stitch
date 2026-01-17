@@ -8,6 +8,42 @@ import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { Loader2 } from 'lucide-react';
 
+// Helper to extract video duration from URL
+const getVideoDuration = (url: string): Promise<number> => {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const duration = video.duration;
+      if (isFinite(duration) && !isNaN(duration)) {
+        resolve(duration);
+      } else {
+        reject(new Error('Invalid duration'));
+      }
+    };
+    video.onerror = () => reject(new Error('Failed to load video metadata'));
+    video.src = url;
+  });
+};
+
+// Helper to extract audio duration from URL
+const getAudioDuration = (url: string): Promise<number> => {
+  return new Promise((resolve, reject) => {
+    const audio = document.createElement('audio');
+    audio.preload = 'metadata';
+    audio.onloadedmetadata = () => {
+      const duration = audio.duration;
+      if (isFinite(duration) && !isNaN(duration)) {
+        resolve(duration);
+      } else {
+        reject(new Error('Invalid duration'));
+      }
+    };
+    audio.onerror = () => reject(new Error('Failed to load audio metadata'));
+    audio.src = url;
+  });
+};
+
 export function Editor() {
   const {
     clips,
@@ -63,21 +99,50 @@ export function Editor() {
   }, []);
 
   // Combined handler to add video and its audio track together
-  const handleAddVideoWithAudio = useCallback((video: { id: string; url: string; duration?: number }) => {
-    addVideoToTimeline(video);
+  const handleAddVideoWithAudio = useCallback(async (video: { id: string; url: string; duration?: number }) => {
+    let duration = video.duration;
+    // Extract duration if not provided
+    if (!duration) {
+      try {
+        duration = await getVideoDuration(video.url);
+      } catch (error) {
+        console.error('Failed to extract video duration:', error);
+      }
+    }
+    const videoWithDuration = { ...video, duration };
+    addVideoToTimeline(videoWithDuration);
     // Also add the video's audio to the audio track
-    addAudioToTimeline(video);
+    addAudioToTimeline(videoWithDuration);
   }, [addVideoToTimeline, addAudioToTimeline]);
 
   // Drop handlers for Timeline
-  const handleDropVideo = useCallback((video: { id: string; url: string; duration?: number; timestamp: number }) => {
-    addVideoAtTimestamp(video, video.timestamp);
+  const handleDropVideo = useCallback(async (video: { id: string; url: string; duration?: number; timestamp: number }) => {
+    let duration = video.duration;
+    // Extract duration if not provided
+    if (!duration) {
+      try {
+        duration = await getVideoDuration(video.url);
+      } catch (error) {
+        console.error('Failed to extract video duration:', error);
+      }
+    }
+    const videoWithDuration = { ...video, duration };
+    addVideoAtTimestamp(videoWithDuration, video.timestamp);
     // Also add the video's audio at the same timestamp
-    addAudioAtTimestamp(video, video.timestamp);
+    addAudioAtTimestamp(videoWithDuration, video.timestamp);
   }, [addVideoAtTimestamp, addAudioAtTimestamp]);
 
-  const handleDropAudio = useCallback((audio: { id: string; url: string; duration?: number; timestamp: number }) => {
-    addAudioAtTimestamp(audio, audio.timestamp);
+  const handleDropAudio = useCallback(async (audio: { id: string; url: string; duration?: number; timestamp: number }) => {
+    let duration = audio.duration;
+    // Extract duration if not provided
+    if (!duration) {
+      try {
+        duration = await getAudioDuration(audio.url);
+      } catch (error) {
+        console.error('Failed to extract audio duration:', error);
+      }
+    }
+    addAudioAtTimestamp({ ...audio, duration }, audio.timestamp);
   }, [addAudioAtTimestamp]);
 
   if (isLoading) {
