@@ -633,11 +633,6 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
                     </span>
                   )}
                 </div>
-                {video.summary && (
-                  <p className="text-gray-400 text-xs mt-1 line-clamp-2 group-hover:line-clamp-none">
-                    {video.summary}
-                  </p>
-                )}
               </div>
             ))}
           </div>
