@@ -15,12 +15,14 @@ interface PreviewProps {
   onTimeUpdate: (time: number) => void;
   onSeek: (time: number) => void;
   onDropVideo?: (video: { id: string; url: string; duration?: number }) => void;
+  isSeekingRef: RefObject<boolean>;
 }
 
-export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onSeek, onDropVideo }: PreviewProps) {
+export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onSeek, onDropVideo, isSeekingRef }: PreviewProps) {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const prevActiveClipIdRef = useRef<string | null>(null);
+  const isTransitioningRef = useRef(false);
 
   const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -91,12 +93,12 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
   }, []);
 
   // Find the clip that contains the current scrubber time
-  // Use <= for clipEnd to ensure no gap at exact boundary (consistent with audio logic)
+  // Use < for clipEnd for consistency with Editor.tsx boundary checks
   let activeClip = sortedClips.find(clip => {
     const clipStart = clip.timestamp;
     const visibleDuration = clip.duration - (clip.trimStart || 0) - (clip.trimEnd || 0);
     const clipEnd = clipStart + visibleDuration;
-    return currentTime >= clipStart && currentTime <= clipEnd;
+    return currentTime >= clipStart && currentTime < clipEnd;
   });
 
   // Fallback: if no clip found (e.g., currentTime exactly at boundary between clips),
@@ -116,6 +118,12 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
     }
 
     if (prevActiveClipIdRef.current !== activeClip.id) {
+      console.log('[Clip] Active clip changed:', {
+        from: prevActiveClipIdRef.current?.slice(0, 8),
+        to: activeClip.id.slice(0, 8),
+        currentTime,
+        clipTimestamp: activeClip.timestamp
+      });
       prevActiveClipIdRef.current = activeClip.id;
 
       const handleLoadedMetadata = () => {
@@ -149,45 +157,103 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
   };
 
   const handleVideoEnded = () => {
+    console.log('[Clip] Video ended event fired');
+
+    // Skip if already transitioning (handleTimeUpdate already handled it)
+    if (isTransitioningRef.current) {
+      console.log('[Clip] Already transitioning, skipping onEnded');
+      return;
+    }
+
+    isTransitioningRef.current = true;
     const currentIndex = sortedClips.findIndex(c => c.id === activeClip?.id);
+
+    console.log('[Clip] handleVideoEnded:', {
+      clipId: activeClip?.id.slice(0, 8),
+      currentIndex,
+      totalClips: sortedClips.length
+    });
+
     if (currentIndex >= 0 && currentIndex < sortedClips.length - 1) {
-      // Seek to start of next clip
       const nextClip = sortedClips[currentIndex + 1];
+      console.log('[Clip] onEnded: transitioning to next clip:', nextClip.id.slice(0, 8));
       onSeek(nextClip.timestamp);
-      // Continue playing
       if (videoRef.current) {
         videoRef.current.play();
       }
     } else {
+      console.log('[Clip] onEnded: end of timeline, resetting');
       setIsPlaying(false);
-      onSeek(0); // Reset to beginning
+      onSeek(0);
     }
+
+    setTimeout(() => {
+      isTransitioningRef.current = false;
+    }, 150);
   };
 
   const handleTimeUpdate = () => {
     if (!videoRef.current || !activeClip) return;
 
+    // Skip during seeking
+    if (isSeekingRef.current) {
+      console.log('[Clip] Skipping timeupdate during seek');
+      return;
+    }
+
+    // Skip during transition
+    if (isTransitioningRef.current) {
+      console.log('[Clip] Skipping timeupdate during transition');
+      return;
+    }
+
     const trimStart = activeClip.trimStart || 0;
     const trimEnd = activeClip.trimEnd || 0;
     const visibleDuration = activeClip.duration - trimStart - trimEnd;
     const clipEnd = activeClip.timestamp + visibleDuration;
-
     const globalTime = activeClip.timestamp + (videoRef.current.currentTime - trimStart);
 
-    // Check if we've reached the visible clip end
-    if (globalTime >= clipEnd) {
+    console.log('[Clip] timeupdate:', {
+      clipId: activeClip.id.slice(0, 8),
+      videoTime: videoRef.current.currentTime.toFixed(3),
+      globalTime: globalTime.toFixed(3),
+      clipEnd: clipEnd.toFixed(3),
+      remaining: (clipEnd - globalTime).toFixed(3)
+    });
+
+    // Check if we've reached the visible clip end (small threshold to trigger slightly early)
+    if (globalTime >= clipEnd - 0.05) {
+      isTransitioningRef.current = true;
+
       const currentIndex = sortedClips.findIndex(c => c.id === activeClip.id);
+      console.log('[Clip] Reached clip end:', {
+        clipId: activeClip.id.slice(0, 8),
+        currentIndex,
+        totalClips: sortedClips.length
+      });
+
       if (currentIndex >= 0 && currentIndex < sortedClips.length - 1) {
         const nextClip = sortedClips[currentIndex + 1];
+        console.log('[Clip] Transitioning to next clip:', {
+          nextClipId: nextClip.id.slice(0, 8),
+          nextTimestamp: nextClip.timestamp
+        });
         onSeek(nextClip.timestamp);
         if (isPlaying && videoRef.current) {
           videoRef.current.play();
         }
       } else {
+        console.log('[Clip] End of timeline, resetting to 0');
         setIsPlaying(false);
         videoRef.current?.pause();
         onSeek(0);
       }
+
+      // Reset transition flag after seek delay
+      setTimeout(() => {
+        isTransitioningRef.current = false;
+        console.log('[Clip] Transition complete');
+      }, 150);
       return;
     }
 

@@ -175,6 +175,7 @@ export function Editor() {
           onTimeUpdate={handleTimeUpdate}
           onSeek={handleSeek}
           onDropVideo={handleAddVideoWithAudio}
+          isSeekingRef={isSeekingRef}
         />
       </div>
       <Timeline
