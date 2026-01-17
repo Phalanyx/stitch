@@ -9,8 +9,22 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { Loader2 } from 'lucide-react';
 
 export function Editor() {
-  const { clips, isLoading, addVideoToTimeline, updateVideoTimestamp, removeClip } =
-    useTimeline();
+  const {
+    clips,
+    isLoading,
+    addVideoToTimeline,
+    addVideoAtTimestamp,
+    updateVideoTimestamp,
+    updateClipTrim,
+    removeClip,
+    // Audio handlers
+    audioClips,
+    addAudioToTimeline,
+    addAudioAtTimestamp,
+    updateAudioTimestamp,
+    updateAudioClipTrim,
+    removeAudioClip,
+  } = useTimeline();
 
   // Enable auto-save
   useAutoSave();
@@ -48,6 +62,24 @@ export function Editor() {
     setCurrentTime(time);
   }, []);
 
+  // Combined handler to add video and its audio track together
+  const handleAddVideoWithAudio = useCallback((video: { id: string; url: string; duration?: number }) => {
+    addVideoToTimeline(video);
+    // Also add the video's audio to the audio track
+    addAudioToTimeline(video);
+  }, [addVideoToTimeline, addAudioToTimeline]);
+
+  // Drop handlers for Timeline
+  const handleDropVideo = useCallback((video: { id: string; url: string; duration?: number; timestamp: number }) => {
+    addVideoAtTimestamp(video, video.timestamp);
+    // Also add the video's audio at the same timestamp
+    addAudioAtTimestamp(video, video.timestamp);
+  }, [addVideoAtTimestamp, addAudioAtTimestamp]);
+
+  const handleDropAudio = useCallback((audio: { id: string; url: string; duration?: number; timestamp: number }) => {
+    addAudioAtTimestamp(audio, audio.timestamp);
+  }, [addAudioAtTimestamp]);
+
   if (isLoading) {
     return (
       <div className="h-screen bg-gray-900 flex items-center justify-center">
@@ -59,7 +91,7 @@ export function Editor() {
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar onAddToTimeline={addVideoToTimeline} />
+        <Sidebar onAddToTimeline={handleAddVideoWithAudio} onAddAudioToTimeline={addAudioToTimeline} />
         <Preview
           clips={clips}
           videoRef={videoRef}
@@ -67,12 +99,20 @@ export function Editor() {
           setIsPlaying={setIsPlaying}
           currentTime={currentTime}
           onTimeUpdate={handleTimeUpdate}
+          onDropVideo={handleAddVideoWithAudio}
         />
       </div>
       <Timeline
         clips={clips}
+        audioClips={audioClips}
         onUpdateTimestamp={updateVideoTimestamp}
+        onUpdateTrim={updateClipTrim}
         onRemove={removeClip}
+        onUpdateAudioTimestamp={updateAudioTimestamp}
+        onUpdateAudioTrim={updateAudioClipTrim}
+        onRemoveAudio={removeAudioClip}
+        onDropVideo={handleDropVideo}
+        onDropAudio={handleDropAudio}
         currentTime={currentTime}
         onSeek={handleSeek}
       />

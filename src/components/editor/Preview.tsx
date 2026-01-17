@@ -11,10 +11,12 @@ interface PreviewProps {
   setIsPlaying: (playing: boolean) => void;
   currentTime: number;
   onTimeUpdate: (time: number) => void;
+  onDropVideo?: (video: { id: string; url: string; duration?: number }) => void;
 }
 
-export function Preview({ clips, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate }: PreviewProps) {
+export function Preview({ clips, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onDropVideo }: PreviewProps) {
   const [currentClipIndex, setCurrentClipIndex] = useState(0);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -54,8 +56,42 @@ export function Preview({ clips, videoRef, isPlaying, setIsPlaying, currentTime,
     onTimeUpdate(globalTime);
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (data.type === 'video' && onDropVideo) {
+        onDropVideo({
+          id: data.id,
+          url: data.url,
+          duration: data.duration,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to parse drop data:', err);
+    }
+  };
+
   return (
-    <div className="flex-1 bg-black flex flex-col overflow-hidden">
+    <div
+      className={`flex-1 bg-black flex flex-col overflow-hidden transition-all ${
+        isDraggingOver ? 'ring-2 ring-blue-500 ring-inset bg-blue-500/10' : ''
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Video Area */}
       <div className="flex-1 min-h-0 flex items-center justify-center">
         {activeClip ? (

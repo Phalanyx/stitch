@@ -6,7 +6,15 @@ import { AudioReference } from '@/types/audio';
 
 export function useTimeline() {
   const { clips, setClips, addVideoToTimeline, addVideoAtTimestamp, updateVideoTimestamp, updateClipTrim, removeClip } = useTimelineStore();
-  const { setAudioClips } = useAudioTimelineStore();
+  const {
+    audioClips,
+    setAudioClips,
+    addAudioToTimeline,
+    addAudioAtTimestamp,
+    updateAudioTimestamp,
+    updateAudioClipTrim,
+    removeAudioClip,
+  } = useAudioTimelineStore();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -38,5 +46,12 @@ export function useTimeline() {
     updateVideoTimestamp,
     updateClipTrim,
     removeClip,
+    // Audio handlers
+    audioClips,
+    addAudioToTimeline,
+    addAudioAtTimestamp,
+    updateAudioTimestamp,
+    updateAudioClipTrim,
+    removeAudioClip,
   };
 }
