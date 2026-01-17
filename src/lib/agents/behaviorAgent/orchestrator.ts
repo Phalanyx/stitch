@@ -14,7 +14,9 @@ export async function runBehaviorAgent(
   tools: ToolRegistry,
   previousMemory = createMemory(),
   userId?: string,
-  prompt?: string
+  prompt?: string,
+  clips?: import('@/types/video').VideoReference[],
+  audioClips?: import('@/types/video').VideoReference[]
 ): Promise<OrchestratorOutput> {
   const { memory: nextMemoryBase, newEvents } = ingestNewEvents(events, previousMemory);
   const behavior = await interpretBehavior(newEvents, {
@@ -39,6 +41,8 @@ export async function runBehaviorAgent(
     memory,
     behavior,
     userId,
+    clips,
+    audioClips,
   };
 
   const results = await runToolsSequentially(tools, context, plan.calls);

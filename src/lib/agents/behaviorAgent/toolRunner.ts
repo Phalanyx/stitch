@@ -19,7 +19,7 @@ export async function runToolsSequentially(
     }
 
     try {
-      const output = await toolFn(call.args, context);
+      const output = await toolFn(call.args ?? {}, context);
       const changed = Boolean(
         output &&
           typeof output === 'object' &&

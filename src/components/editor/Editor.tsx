@@ -7,6 +7,7 @@ import { ChatAgent } from './ChatAgent';
 import { Timeline } from './Timeline';
 import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
+import { useBehaviorAgent } from '@/hooks/useBehaviorAgent';
 import { useVideoExport } from '@/hooks/useVideoExport';
 import { ExportProgressModal } from '@/components/ui/ExportProgressModal';
 import { Loader2, Download } from 'lucide-react';
@@ -77,6 +78,7 @@ export function Editor() {
 
   // Enable auto-save
   useAutoSave();
+  const { runAgent } = useBehaviorAgent(clips, audioClips);
 
   // Video export
   const { exportToFile, isExporting, progress, error, reset } = useVideoExport();
@@ -98,25 +100,14 @@ export function Editor() {
       })),
     ];
 
-    fetch('/api/agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ events }),
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || `Request failed: ${response.status}`);
-        }
-        return response.json();
-      })
+    runAgent(events)
       .then((data) => {
         console.log('Agent output', data);
       })
       .catch((error) => {
         console.error('Agent test failed', error);
       });
-  }, [clips, isLoading]);
+  }, [clips, isLoading, runAgent]);
 
   // Playback state lifted from Preview
   const videoRef = useRef<HTMLVideoElement>(null);
