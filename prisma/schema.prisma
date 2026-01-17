@@ -23,6 +23,7 @@ model Video {
   url       String
   fileName  String   @map("file_name")
   duration  Float?
+  fileSize  BigInt?  @map("file_size")
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([userId])
@@ -35,6 +36,7 @@ model Audio {
   url       String
   fileName  String   @map("file_name")
   duration  Float?
+  fileSize  BigInt?  @map("file_size")
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([userId])

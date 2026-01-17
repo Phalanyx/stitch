@@ -11,6 +11,7 @@ interface AudioTimelineState {
   updateAudioTimestamp: (id: string, newTime: number) => void;
   updateAudioClipTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   removeAudioClip: (id: string) => void;
+  removeClipsByAudioId: (audioId: string) => void;
   setAudioClips: (clips: AudioReference[]) => void;
   markSaved: () => void;
 }
@@ -103,6 +104,13 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
   removeAudioClip: (id) => {
     set((state) => ({
       audioClips: state.audioClips.filter((clip) => clip.id !== id),
+      isDirty: true,
+    }));
+  },
+
+  removeClipsByAudioId: (audioId) => {
+    set((state) => ({
+      audioClips: state.audioClips.filter((clip) => clip.audioId !== audioId),
       isDirty: true,
     }));
   },

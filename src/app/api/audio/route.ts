@@ -16,5 +16,11 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
   });
 
-  return NextResponse.json(audioFiles);
+  // Convert BigInt fileSize to Number for JSON serialization
+  const serializedAudio = audioFiles.map((audio) => ({
+    ...audio,
+    fileSize: audio.fileSize ? Number(audio.fileSize) : null,
+  }));
+
+  return NextResponse.json(serializedAudio);
 }

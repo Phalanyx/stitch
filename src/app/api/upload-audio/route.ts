@@ -55,8 +55,14 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       url: publicUrl,
       fileName: file.name,
+      fileSize: BigInt(file.size),
     },
   });
 
-  return NextResponse.json({ audio });
+  return NextResponse.json({
+    audio: {
+      ...audio,
+      fileSize: audio.fileSize ? Number(audio.fileSize) : null,
+    },
+  });
 }

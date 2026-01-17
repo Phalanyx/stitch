@@ -14,5 +14,6 @@ export interface VideoMetadata {
   url: string;
   fileName: string;
   duration: number | null;
+  fileSize: number | null;
   createdAt: Date;
 }

@@ -11,6 +11,7 @@ interface TimelineState {
   updateVideoTimestamp: (id: string, newTime: number) => void;
   updateClipTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   removeClip: (id: string) => void;
+  removeClipsByVideoId: (videoId: string) => void;
   setClips: (clips: VideoReference[]) => void;
   markSaved: () => void;
 }
@@ -105,6 +106,13 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   removeClip: (id) => {
     set((state) => ({
       clips: state.clips.filter((clip) => clip.id !== id),
+      isDirty: true,
+    }));
+  },
+
+  removeClipsByVideoId: (videoId) => {
+    set((state) => ({
+      clips: state.clips.filter((clip) => clip.videoId !== videoId),
       isDirty: true,
     }));
   },

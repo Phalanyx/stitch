@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { session_video, session_audio } = body;
 
-  const updateData: { sessionVideo?: unknown; sessionAudio?: unknown } = {};
+  const updateData: { sessionVideo?: object; sessionAudio?: object } = {};
   if (session_video !== undefined) {
     updateData.sessionVideo = session_video;
   }

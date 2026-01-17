@@ -1,15 +1,21 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Upload, Film, Music, Loader2 } from 'lucide-react';
+import { Upload, Film, Music, Loader2, Pencil, Info, X, Check } from 'lucide-react';
 import { VideoMetadata } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { createClient } from '@/lib/supabase/client';
+import { ConfirmDeleteModal } from '@/components/ui/ConfirmDeleteModal';
+import { MediaPropertiesModal } from '@/components/ui/MediaPropertiesModal';
+import { useTimelineStore } from '@/stores/timelineStore';
+import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 
 interface SidebarProps {
   onAddToTimeline: (video: { id: string; url: string; duration?: number }) => void;
   onAddAudioToTimeline: (audio: { id: string; url: string; duration?: number }) => void;
 }
+
+type MediaItem = (VideoMetadata | AudioMetadata) & { type: 'video' | 'audio' };
 
 export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps) {
   const [videos, setVideos] = useState<VideoMetadata[]>([]);
@@ -17,8 +23,20 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [deleteModal, setDeleteModal] = useState<{ item: MediaItem; isUsed: boolean } | null>(null);
+  const [propertiesModal, setPropertiesModal] = useState<MediaItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  const clips = useTimelineStore((state) => state.clips);
+  const audioClips = useAudioTimelineStore((state) => state.audioClips);
+  const removeClipsByVideoId = useTimelineStore((state) => state.removeClipsByVideoId);
+  const removeClipsByAudioId = useAudioTimelineStore((state) => state.removeClipsByAudioId);
 
   useEffect(() => {
     async function loadMedia() {
@@ -47,7 +65,13 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
     loadMedia();
   }, []);
 
-  // Helper function to extract video duration from a video URL
+  useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingId]);
+
   const getVideoDuration = (url: string): Promise<number> => {
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
@@ -73,16 +97,15 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
   };
 
   const handleAddToTimeline = async (video: VideoMetadata) => {
+    if (editingId) return;
     try {
       let duration = video.duration ?? undefined;
 
-      // If duration is not available, try to extract it from the video
       if (!duration) {
         try {
           duration = await getVideoDuration(video.url);
         } catch (error) {
           console.error('Failed to extract video duration:', error);
-          // Will fall back to default duration in the store
         }
       }
 
@@ -96,7 +119,6 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
     }
   };
 
-  // Helper function to extract audio duration from an audio URL
   const getAudioDuration = (url: string): Promise<number> => {
     return new Promise((resolve, reject) => {
       const audio = document.createElement('audio');
@@ -120,6 +142,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
   };
 
   const handleAddAudioToTimeline = async (audio: AudioMetadata) => {
+    if (editingId) return;
     try {
       let duration = audio.duration ?? undefined;
 
@@ -229,6 +252,195 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
     }
   };
 
+  const isVideoUsedInTimeline = (videoId: string) => {
+    return clips.some((clip) => clip.videoId === videoId);
+  };
+
+  const isAudioUsedInTimeline = (audioId: string) => {
+    return audioClips.some((clip) => clip.audioId === audioId);
+  };
+
+  const handleStartEdit = (id: string, currentName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(id);
+    setEditingName(currentName);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditingName('');
+  };
+
+  const handleSaveEdit = async (type: 'video' | 'audio', id: string) => {
+    if (!editingName.trim()) {
+      handleCancelEdit();
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/${type === 'video' ? 'videos' : 'audio'}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: editingName.trim() }),
+      });
+
+      if (response.ok) {
+        const updated = await response.json();
+        if (type === 'video') {
+          setVideos((prev) => prev.map((v) => (v.id === id ? { ...v, fileName: updated.fileName } : v)));
+        } else {
+          setAudioFiles((prev) => prev.map((a) => (a.id === id ? { ...a, fileName: updated.fileName } : a)));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to rename:', error);
+    }
+
+    handleCancelEdit();
+  };
+
+  const handleDeleteClick = (item: VideoMetadata | AudioMetadata, type: 'video' | 'audio', e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isUsed = type === 'video'
+      ? isVideoUsedInTimeline(item.id)
+      : isAudioUsedInTimeline(item.id);
+    setDeleteModal({ item: { ...item, type }, isUsed });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteModal) return;
+
+    setIsDeleting(true);
+    const { item } = deleteModal;
+
+    try {
+      const endpoint = item.type === 'video' ? 'videos' : 'audio';
+      const response = await fetch(`/api/${endpoint}/${item.id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        if (item.type === 'video') {
+          setVideos((prev) => prev.filter((v) => v.id !== item.id));
+          removeClipsByVideoId(item.id);
+        } else {
+          setAudioFiles((prev) => prev.filter((a) => a.id !== item.id));
+          removeClipsByAudioId(item.id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete:', error);
+    }
+
+    setIsDeleting(false);
+    setDeleteModal(null);
+  };
+
+  const handlePropertiesClick = (item: VideoMetadata | AudioMetadata, type: 'video' | 'audio', e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPropertiesModal({ ...item, type });
+  };
+
+  const renderMediaItem = (
+    item: VideoMetadata | AudioMetadata,
+    type: 'video' | 'audio',
+    Icon: typeof Film | typeof Music,
+    iconColor: string,
+    onClick: () => void
+  ) => {
+    const isHovered = hoveredId === item.id;
+    const isEditing = editingId === item.id;
+
+    return (
+      <div
+        key={item.id}
+        draggable={!isEditing}
+        onDragStart={(e) => {
+          if (isEditing) {
+            e.preventDefault();
+            return;
+          }
+          e.dataTransfer.setData('application/json', JSON.stringify({
+            type,
+            id: item.id,
+            url: item.url,
+            duration: item.duration,
+          }));
+          e.dataTransfer.effectAllowed = 'copy';
+        }}
+        className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-grab active:cursor-grabbing transition-colors group"
+        onClick={onClick}
+        onMouseEnter={() => setHoveredId(item.id)}
+        onMouseLeave={() => setHoveredId(null)}
+      >
+        <div className="flex items-center gap-2">
+          <Icon className={`w-4 h-4 ${iconColor} flex-shrink-0`} />
+          {isEditing ? (
+            <div className="flex-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <input
+                ref={editInputRef}
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSaveEdit(type, item.id);
+                  } else if (e.key === 'Escape') {
+                    handleCancelEdit();
+                  }
+                }}
+                className="flex-1 bg-gray-800 text-white text-sm px-2 py-0.5 rounded border border-gray-600 focus:border-blue-500 focus:outline-none min-w-0"
+              />
+              <button
+                onClick={() => handleSaveEdit(type, item.id)}
+                className="p-1 text-green-400 hover:text-green-300 hover:bg-gray-700 rounded"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <span className="text-white text-sm truncate flex-1 min-w-0">
+                {item.fileName}
+              </span>
+              {isHovered && (
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <button
+                    onClick={(e) => handleStartEdit(item.id, item.fileName, e)}
+                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-600 rounded transition-colors"
+                    title="Rename"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => handlePropertiesClick(item, type, e)}
+                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-600 rounded transition-colors"
+                    title="Properties"
+                  >
+                    <Info className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => handleDeleteClick(item, type, e)}
+                    className="p-1 text-gray-400 hover:text-red-400 hover:bg-gray-600 rounded transition-colors"
+                    title="Delete"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
       {/* Video Library */}
@@ -271,30 +483,9 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
           </div>
         ) : (
           <div className="space-y-2">
-            {videos.map((video) => (
-              <div
-                key={video.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('application/json', JSON.stringify({
-                    type: 'video',
-                    id: video.id,
-                    url: video.url,
-                    duration: video.duration,
-                  }));
-                  e.dataTransfer.effectAllowed = 'copy';
-                }}
-                className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-grab active:cursor-grabbing transition-colors"
-                onClick={() => handleAddToTimeline(video)}
-              >
-                <div className="flex items-center gap-2">
-                  <Film className="w-4 h-4 text-blue-400" />
-                  <span className="text-white text-sm truncate flex-1">
-                    {video.fileName}
-                  </span>
-                </div>
-              </div>
-            ))}
+            {videos.map((video) =>
+              renderMediaItem(video, 'video', Film, 'text-blue-400', () => handleAddToTimeline(video))
+            )}
           </div>
         )}
       </div>
@@ -339,33 +530,38 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
           </div>
         ) : (
           <div className="space-y-2">
-            {audioFiles.map((audio) => (
-              <div
-                key={audio.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('application/json', JSON.stringify({
-                    type: 'audio',
-                    id: audio.id,
-                    url: audio.url,
-                    duration: audio.duration,
-                  }));
-                  e.dataTransfer.effectAllowed = 'copy';
-                }}
-                className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-grab active:cursor-grabbing transition-colors"
-                onClick={() => handleAddAudioToTimeline(audio)}
-              >
-                <div className="flex items-center gap-2">
-                  <Music className="w-4 h-4 text-green-400" />
-                  <span className="text-white text-sm truncate flex-1">
-                    {audio.fileName}
-                  </span>
-                </div>
-              </div>
-            ))}
+            {audioFiles.map((audio) =>
+              renderMediaItem(audio, 'audio', Music, 'text-green-400', () => handleAddAudioToTimeline(audio))
+            )}
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal && (
+        <ConfirmDeleteModal
+          isOpen={true}
+          onClose={() => setDeleteModal(null)}
+          onConfirm={handleConfirmDelete}
+          itemName={deleteModal.item.fileName}
+          itemType={deleteModal.item.type}
+          isUsedInTimeline={deleteModal.isUsed}
+          isDeleting={isDeleting}
+        />
+      )}
+
+      {/* Properties Modal */}
+      {propertiesModal && (
+        <MediaPropertiesModal
+          isOpen={true}
+          onClose={() => setPropertiesModal(null)}
+          type={propertiesModal.type}
+          name={propertiesModal.fileName}
+          size={propertiesModal.fileSize}
+          duration={propertiesModal.duration}
+          createdAt={propertiesModal.createdAt}
+        />
+      )}
     </div>
   );
 }

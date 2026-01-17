@@ -49,8 +49,14 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       url: publicUrl,
       fileName: file.name,
+      fileSize: BigInt(file.size),
     },
   });
 
-  return NextResponse.json({ video });
+  return NextResponse.json({
+    video: {
+      ...video,
+      fileSize: video.fileSize ? Number(video.fileSize) : null,
+    },
+  });
 }
