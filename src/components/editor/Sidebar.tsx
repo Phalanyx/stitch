@@ -33,6 +33,55 @@ export function Sidebar({ onAddToTimeline }: SidebarProps) {
     loadVideos();
   }, []);
 
+  // Helper function to extract video duration from a video URL
+  const getVideoDuration = (url: string): Promise<number> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+
+      video.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(video.src);
+        const duration = video.duration;
+        if (isFinite(duration) && !isNaN(duration)) {
+          resolve(duration);
+        } else {
+          reject(new Error('Invalid duration'));
+        }
+      };
+
+      video.onerror = () => {
+        window.URL.revokeObjectURL(video.src);
+        reject(new Error('Failed to load video metadata'));
+      };
+
+      video.src = url;
+    });
+  };
+
+  const handleAddToTimeline = async (video: VideoMetadata) => {
+    try {
+      let duration = video.duration ?? undefined;
+
+      // If duration is not available, try to extract it from the video
+      if (!duration) {
+        try {
+          duration = await getVideoDuration(video.url);
+        } catch (error) {
+          console.error('Failed to extract video duration:', error);
+          // Will fall back to default duration in the store
+        }
+      }
+
+      onAddToTimeline({
+        id: video.id,
+        url: video.url,
+        duration,
+      });
+    } catch (error) {
+      console.error('Failed to add video to timeline:', error);
+    }
+  };
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -122,13 +171,7 @@ export function Sidebar({ onAddToTimeline }: SidebarProps) {
               <div
                 key={video.id}
                 className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-pointer transition-colors"
-                onClick={() =>
-                  onAddToTimeline({
-                    id: video.id,
-                    url: video.url,
-                    duration: video.duration ?? undefined,
-                  })
-                }
+                onClick={() => handleAddToTimeline(video)}
               >
                 <div className="flex items-center gap-2">
                   <Film className="w-4 h-4 text-gray-400" />
