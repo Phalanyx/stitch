@@ -34,7 +34,7 @@ export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
     if (!trimmed || isSending) return;
     setIsSending(true);
 
-    const nextMessages = [...messages, { role: 'user', content: trimmed }];
+    const nextMessages = [...messages, { role: 'user' as const, content: trimmed }];
     setMessages(nextMessages);
     setInput('');
 

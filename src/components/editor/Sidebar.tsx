@@ -26,6 +26,12 @@ interface UploadModalState {
   errorMessage?: string;
 }
 
+interface PreUploadModalState {
+  isOpen: boolean;
+  file: File | null;
+  customName: string;
+}
+
 export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps) {
   const [videos, setVideos] = useState<VideoMetadata[]>([]);
   const [audioFiles, setAudioFiles] = useState<AudioMetadata[]>([]);
@@ -34,6 +40,11 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
     stage: 'uploading',
     fileName: '',
     videoId: null,
+  });
+  const [preUploadModal, setPreUploadModal] = useState<PreUploadModalState>({
+    isOpen: false,
+    file: null,
+    customName: '',
   });
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,6 +57,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
   const videoFileInputRef = useRef<HTMLInputElement>(null);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
+  const preUploadInputRef = useRef<HTMLInputElement>(null);
 
   const clips = useTimelineStore((state) => state.clips);
   const audioClips = useAudioTimelineStore((state) => state.audioClips);
@@ -85,6 +97,13 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
       editInputRef.current.select();
     }
   }, [editingId]);
+
+  useEffect(() => {
+    if (preUploadModal.isOpen && preUploadInputRef.current) {
+      preUploadInputRef.current.focus();
+      preUploadInputRef.current.select();
+    }
+  }, [preUploadModal.isOpen]);
 
   // Poll task status for the current upload in modal
   const pollTaskStatus = useCallback(async (videoId: string) => {
@@ -249,11 +268,49 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Open modal and start uploading
+    // Get base name without extension for default custom name
+    const baseName = file.name.replace(/\.[^/.]+$/, '');
+
+    // Show pre-upload modal for naming
+    setPreUploadModal({
+      isOpen: true,
+      file,
+      customName: baseName,
+    });
+
+    // Clear file input
+    if (videoFileInputRef.current) {
+      videoFileInputRef.current.value = '';
+    }
+  };
+
+  const handlePreUploadCancel = () => {
+    setPreUploadModal({
+      isOpen: false,
+      file: null,
+      customName: '',
+    });
+  };
+
+  const handlePreUploadConfirm = async () => {
+    const { file, customName } = preUploadModal;
+    if (!file) return;
+
+    // Close pre-upload modal
+    setPreUploadModal({
+      isOpen: false,
+      file: null,
+      customName: '',
+    });
+
+    // Use custom name if provided, otherwise use original filename
+    const displayName = customName.trim() || file.name;
+
+    // Open upload progress modal and start uploading
     setUploadModal({
       isOpen: true,
       stage: 'uploading',
-      fileName: file.name,
+      fileName: displayName,
       videoId: null,
     });
 
@@ -273,6 +330,9 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
 
       const formData = new FormData();
       formData.append('file', file);
+      if (customName.trim()) {
+        formData.append('customName', customName.trim());
+      }
 
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -323,10 +383,6 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
         stage: 'error',
         errorMessage: 'Network error',
       }));
-    } finally {
-      if (videoFileInputRef.current) {
-        videoFileInputRef.current.value = '';
-      }
     }
   };
 
@@ -698,6 +754,44 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
           duration={propertiesModal.duration}
           createdAt={propertiesModal.createdAt}
         />
+      )}
+
+      {/* Pre-Upload Naming Modal */}
+      {preUploadModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-96 max-w-[90vw]">
+            <h3 className="text-white font-semibold text-lg mb-4">Name Your Video</h3>
+            <input
+              ref={preUploadInputRef}
+              type="text"
+              value={preUploadModal.customName}
+              onChange={(e) => setPreUploadModal((prev) => ({ ...prev, customName: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handlePreUploadConfirm();
+                } else if (e.key === 'Escape') {
+                  handlePreUploadCancel();
+                }
+              }}
+              placeholder="Enter video name"
+              className="w-full bg-gray-700 text-white px-4 py-2 rounded-md border border-gray-600 focus:border-blue-500 focus:outline-none mb-4"
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={handlePreUploadCancel}
+                className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePreUploadConfirm}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+              >
+                Upload
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Upload Progress Modal */}
