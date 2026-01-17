@@ -3,6 +3,9 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { prisma } from '@/lib/prisma';
 import { v4 as uuid } from 'uuid';
 import { createTwelveLabsTask } from '@/lib/twelvelabs';
+import { extractAudioFromVideo, cleanupTempAudio } from '@/lib/audio-extractor';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export async function POST(request: NextRequest) {
   // Get the access token from the Authorization header
@@ -21,12 +24,17 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData();
   const file = formData.get('file') as File;
+  const customName = formData.get('customName') as string | null;
 
   if (!file) {
     return NextResponse.json({ error: 'No file provided' }, { status: 400 });
   }
 
   const videoId = uuid();
+  // Use customName if provided, otherwise use original filename
+  const displayName = customName?.trim() || file.name;
+  // Get base name without extension for audio naming
+  const baseName = path.basename(displayName, path.extname(displayName));
   const filePath = `${user.id}/${videoId}_${file.name}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -48,7 +56,7 @@ export async function POST(request: NextRequest) {
   let twelveLabsStatus: string = 'pending';
 
   try {
-    const result = await createTwelveLabsTask(publicUrl, file.name);
+    const result = await createTwelveLabsTask(publicUrl, displayName);
     twelveLabsTaskId = result.taskId;
     twelveLabsStatus = 'indexing';
   } catch (twelveLabsError) {
@@ -57,17 +65,73 @@ export async function POST(request: NextRequest) {
     // Continue without Twelve Labs - video is still usable from Supabase
   }
 
-  // Step 3: Save metadata to database via Prisma
+  // Step 3: Extract audio from video (non-blocking - failure doesn't stop upload)
+  let audioId: string | null = null;
+
+  try {
+    const audioResult = await extractAudioFromVideo(buffer, videoId, baseName);
+
+    // Upload audio to raw-audio bucket
+    const audioFileName = `${baseName}_audio.mp3`;
+    const audioFilePath = `${user.id}/${videoId}_${audioFileName}`;
+    const audioBuffer = await fs.promises.readFile(audioResult.audioPath);
+
+    const { error: audioUploadError } = await supabaseAdmin.storage
+      .from('raw-audio')
+      .upload(audioFilePath, audioBuffer, { contentType: 'audio/mpeg' });
+
+    if (!audioUploadError) {
+      const { data: { publicUrl: audioPublicUrl } } = supabaseAdmin.storage
+        .from('raw-audio')
+        .getPublicUrl(audioFilePath);
+
+      // Create Audio record in database
+      const audio = await prisma.audio.create({
+        data: {
+          userId: user.id,
+          url: audioPublicUrl,
+          fileName: audioFileName,
+          duration: audioResult.duration || null,
+          fileSize: BigInt(audioResult.fileSize),
+        },
+      });
+
+      audioId = audio.id;
+    } else {
+      console.error('Audio upload to storage failed:', audioUploadError);
+    }
+
+    // Cleanup temp audio file
+    await cleanupTempAudio(audioResult.audioPath);
+  } catch (audioError) {
+    console.error('Audio extraction failed:', audioError);
+    // Continue without audio - video is still usable
+  }
+
+  // Step 4: Save video metadata to database via Prisma
   const video = await prisma.video.create({
     data: {
       id: videoId,
       userId: user.id,
       url: publicUrl,
-      fileName: file.name,
+      fileName: displayName,
       twelveLabsTaskId,
       twelveLabsStatus,
+      audioId,
     },
+    include: { audio: true },
   });
 
-  return NextResponse.json({ video });
+  // Convert BigInt fileSize to number for JSON serialization
+  const serializedVideo = {
+    ...video,
+    audio: video.audio
+      ? {
+          ...video.audio,
+          fileSize: video.audio.fileSize ? Number(video.audio.fileSize) : null,
+        }
+      : null,
+  };
+
+  return NextResponse.json({ video: serializedVideo });
 }

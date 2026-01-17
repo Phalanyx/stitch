@@ -28,6 +28,8 @@ model Video {
   twelveLabsTaskId   String?  @map("twelve_labs_task_id")
   twelveLabsStatus   String?  @map("twelve_labs_status")
   summary            String?  @db.Text
+  audioId            String?  @unique @map("audio_id") @db.Uuid
+  audio              Audio?   @relation(fields: [audioId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@map("videos")
@@ -41,6 +43,7 @@ model Audio {
   duration  Float?
   fileSize  BigInt?  @map("file_size")
   createdAt DateTime @default(now()) @map("created_at")
+  video     Video?
 
   @@index([userId])
   @@map("audio")

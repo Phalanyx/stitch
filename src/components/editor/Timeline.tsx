@@ -105,6 +105,15 @@ export function Timeline({
         const dropX = e.clientX - rect.left;
         const timestamp = dropX / PIXELS_PER_SECOND;
         onDropVideo?.({ ...data, timestamp });
+        // If video has linked audio, also add it to the audio track at the same timestamp
+        if (data.audio) {
+          onDropAudio?.({
+            id: data.audio.id,
+            url: data.audio.url,
+            duration: data.audio.duration,
+            timestamp,
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to parse drop data:', err);
