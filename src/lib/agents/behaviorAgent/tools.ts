@@ -1,8 +1,20 @@
 import { callGeminiText } from '@/lib/ai/gemini';
+import { getVideoMetadataForUser } from '@/lib/tools/videoMetadata';
 import { ToolRegistry } from './types';
 
 export function createToolRegistry(): ToolRegistry {
   return {
+    getVideoMetadata: async (args, context) => {
+      const videoId = String(args.videoId ?? '');
+      if (!videoId) {
+        return { error: 'Missing videoId.' };
+      }
+      if (!context.userId) {
+        return { error: 'Missing user context.' };
+      }
+      const metadata = await getVideoMetadataForUser(videoId, context.userId);
+      return metadata ?? { error: `No video metadata found for id ${videoId}.` };
+    },
     suggestTimelineTips: async (_args, context) => {
       const added = context.behavior.eventCounts.clip_added ?? 0;
       const moved = context.behavior.eventCounts.clip_moved ?? 0;

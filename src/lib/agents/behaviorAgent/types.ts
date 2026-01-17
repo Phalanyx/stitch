@@ -53,6 +53,7 @@ export type OrchestratorContext = {
   newEvents: EventRecord[];
   memory: MemoryState;
   behavior: BehaviorState;
+  userId?: string;
 };
 
 export type OrchestratorOutput = {

@@ -12,7 +12,8 @@ import {
 export async function runBehaviorAgent(
   events: EventRecord[],
   tools: ToolRegistry,
-  previousMemory = createMemory()
+  previousMemory = createMemory(),
+  userId?: string
 ): Promise<OrchestratorOutput> {
   const { memory: nextMemoryBase, newEvents } = ingestNewEvents(events, previousMemory);
   const behavior = await interpretBehavior(newEvents, {
@@ -33,6 +34,7 @@ export async function runBehaviorAgent(
     newEvents,
     memory,
     behavior,
+    userId,
   };
 
   const results = await runToolsSequentially(tools, context, plan.calls);
