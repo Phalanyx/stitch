@@ -13,7 +13,7 @@ export async function GET() {
 
   let profile = await prisma.profile.findUnique({
     where: { id: user.id },
-    select: { sessionVideo: true },
+    select: { sessionVideo: true, sessionAudio: true },
   });
 
   // Create profile if it doesn't exist
@@ -22,12 +22,16 @@ export async function GET() {
       data: {
         id: user.id,
         sessionVideo: [],
+        sessionAudio: [],
       },
-      select: { sessionVideo: true },
+      select: { sessionVideo: true, sessionAudio: true },
     });
   }
 
-  return NextResponse.json(profile.sessionVideo);
+  return NextResponse.json({
+    session_video: profile.sessionVideo,
+    session_audio: profile.sessionAudio,
+  });
 }
 
 // POST: Save user's timeline session
@@ -39,14 +43,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { session_video } = await request.json();
+  const body = await request.json();
+  const { session_video, session_audio } = body;
+
+  const updateData: { sessionVideo?: unknown; sessionAudio?: unknown } = {};
+  if (session_video !== undefined) {
+    updateData.sessionVideo = session_video;
+  }
+  if (session_audio !== undefined) {
+    updateData.sessionAudio = session_audio;
+  }
 
   await prisma.profile.upsert({
     where: { id: user.id },
-    update: { sessionVideo: session_video },
+    update: updateData,
     create: {
       id: user.id,
-      sessionVideo: session_video,
+      sessionVideo: session_video ?? [],
+      sessionAudio: session_audio ?? [],
     },
   });
 

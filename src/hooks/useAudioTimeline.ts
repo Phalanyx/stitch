@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
-import { VideoReference } from '@/types/video';
 import { AudioReference } from '@/types/audio';
 
-export function useTimeline() {
-  const { clips, setClips, addVideoToTimeline, updateVideoTimestamp, removeClip } = useTimelineStore();
-  const { setAudioClips } = useAudioTimelineStore();
+export function useAudioTimeline() {
+  const { audioClips, setAudioClips, addAudioToTimeline, updateAudioTimestamp, removeAudioClip } = useAudioTimelineStore();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -15,26 +12,24 @@ export function useTimeline() {
         const response = await fetch('/api/session');
         if (response.ok) {
           const data = await response.json();
-          const videoData = data.session_video as VideoReference[];
           const audioData = data.session_audio as AudioReference[];
-          setClips(videoData ?? []);
           setAudioClips(audioData ?? []);
         }
       } catch (error) {
-        console.error('Failed to load session:', error);
+        console.error('Failed to load audio session:', error);
       } finally {
         setIsLoading(false);
       }
     }
 
     loadSession();
-  }, [setClips, setAudioClips]);
+  }, [setAudioClips]);
 
   return {
-    clips,
+    audioClips,
     isLoading,
-    addVideoToTimeline,
-    updateVideoTimestamp,
-    removeClip,
+    addAudioToTimeline,
+    updateAudioTimestamp,
+    removeAudioClip,
   };
 }

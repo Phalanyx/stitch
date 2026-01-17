@@ -10,6 +10,7 @@ datasource db {
 model Profile {
   id           String   @id @db.Uuid
   sessionVideo Json     @default("[]") @map("session_video")
+  sessionAudio Json     @default("[]") @map("session_audio")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -26,4 +27,16 @@ model Video {
 
   @@index([userId])
   @@map("videos")
+}
+
+model Audio {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  url       String
+  fileName  String   @map("file_name")
+  duration  Float?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("audio")
 }
