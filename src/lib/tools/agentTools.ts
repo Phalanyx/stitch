@@ -1,4 +1,5 @@
 import { VideoReference } from '@/types/video';
+import { AudioMetadata } from '@/types/audio';
 import { JsonValue } from '@/lib/agents/behaviorAgent/types';
 
 export const TOOL_DEFINITIONS = [
@@ -27,6 +28,11 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'list_uploaded_videos',
     description: 'List the user uploaded videos with fileName and summary.',
+  },
+  {
+    name: 'create_audio_from_text',
+    description:
+      'Generate speech audio from text using AI voice synthesis. Use this when the user wants to create narration, voiceover, or any spoken audio from text. Args: {text: "the text to speak"}.',
   },
 ] as const;
 
@@ -105,8 +111,10 @@ export async function listUploadedVideos(): Promise<JsonValue> {
 
 export function createClientToolRegistry(options?: {
   metadataCache?: Map<string, JsonValue>;
+  onAudioCreated?: (audio: AudioMetadata) => void;
 }): AgentToolRegistry {
   const metadataCache = options?.metadataCache ?? new Map<string, JsonValue>();
+  const onAudioCreated = options?.onAudioCreated;
 
   const fetchMetadata = async (videoId: string): Promise<JsonValue> => {
     if (metadataCache.has(videoId)) {
@@ -189,6 +197,32 @@ export function createClientToolRegistry(options?: {
         status: 'ok',
         changed: false,
         output: videos,
+      };
+    },
+    create_audio_from_text: async (args) => {
+      const text = String(args.text ?? '');
+      if (!text) {
+        return errorOutput('Missing text argument.');
+      }
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const data = (await response.json()) as {
+        audio?: AudioMetadata;
+        error?: string;
+      };
+      if (!response.ok) {
+        return errorOutput(data.error || 'Failed to generate audio.');
+      }
+      if (data.audio && onAudioCreated) {
+        onAudioCreated(data.audio);
+      }
+      return {
+        status: 'ok',
+        changed: true,
+        output: (data.audio ?? null) as JsonValue,
       };
     },
   };

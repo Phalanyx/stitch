@@ -2,6 +2,7 @@ import { parseJsonFromText } from '@/lib/ai/gemini';
 import { callChatLlm } from '@/lib/ai/chatLlmClient';
 import { TOOL_DEFINITIONS, createClientToolRegistry } from '@/lib/tools/agentTools';
 import { AgentContext, ToolCall, ToolResult } from './types';
+import { AudioMetadata } from '@/types/audio';
 import { JsonValue } from '@/lib/agents/behaviorAgent/types';
 import { runToolCall } from './toolRunner';
 
@@ -16,6 +17,7 @@ type ChatOrchestratorInput = {
   context: AgentContext;
   toolResults?: ToolResult[];
   metadataCache?: Map<string, JsonValue>;
+  onAudioCreated?: (audio: AudioMetadata) => void;
 };
 
 type ChatOrchestratorOutput = {
@@ -26,7 +28,10 @@ type ChatOrchestratorOutput = {
 export async function runChatOrchestrator(
   input: ChatOrchestratorInput
 ): Promise<ChatOrchestratorOutput> {
-  const tools = createClientToolRegistry({ metadataCache: input.metadataCache });
+  const tools = createClientToolRegistry({
+    metadataCache: input.metadataCache,
+    onAudioCreated: input.onAudioCreated,
+  });
   const planText = await callChatLlm(
     [
       'You are a planner that chooses which tools to call in order.',
@@ -36,6 +41,7 @@ export async function runChatOrchestrator(
       `Known clip ids: ${input.knownClipIds.join(', ') || 'none'}`,
       'Prefer metadata-based tools when the user asks about clip content or names.',
       'Use list_uploaded_videos when the user asks about uploaded videos or library.',
+      'Use create_audio_from_text when the user wants narration, voiceover, or spoken audio.',
       'Pick up to 3 tool calls. Return [] if none are needed.',
       'Use find_clip with args {"id":"..."} when the user references a clip id.',
       'Use get_video_metadata with args {"videoId":"..."} for a clip video id.',
