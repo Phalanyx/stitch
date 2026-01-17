@@ -22,6 +22,7 @@ type ChatResponseData = {
   error?: string;
   action?: TimelineAction;
   toolUsed?: string;
+  sessionId?: string;
 };
 
 export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
@@ -33,6 +34,7 @@ export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
   ]);
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Get store actions
@@ -134,11 +136,17 @@ export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
         body: JSON.stringify({
           messages: nextMessages,
           context: { clips, audioClips },
+          sessionId,
         }),
       });
       const data = (await response.json()) as ChatResponseData;
       if (!response.ok) {
         throw new Error(data.error || 'Request failed');
+      }
+
+      // Save session ID from response for conversation memory
+      if (data.sessionId) {
+        setSessionId(data.sessionId);
       }
 
       // Execute action if present

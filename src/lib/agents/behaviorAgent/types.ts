@@ -57,6 +57,10 @@ export type OrchestratorContext = {
   newEvents: EventRecord[];
   memory: MemoryState;
   behavior: BehaviorState;
+  // Optional timeline context for tools that need it
+  userId?: string;
+  clips?: VideoReference[];
+  audioClips?: AudioReference[];
 };
 
 export type OrchestratorOutput = {
@@ -64,4 +68,5 @@ export type OrchestratorOutput = {
   behavior: BehaviorState;
   plan: Plan;
   results: ToolResult[];
+  actions?: TimelineAction[];
 };

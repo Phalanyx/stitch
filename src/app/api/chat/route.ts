@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { callGeminiText, parseJsonFromText } from '@/lib/ai/gemini';
+import { ModelMessage } from 'ai';
 import { createClient } from '@/lib/supabase/server';
 import { VideoReference } from '@/types/video';
 import { TimelineAction } from '@/types/actions';
+import { AudioReference } from '@/lib/agents/shared';
+import { chatWithTools } from '@/lib/ai/vercel-ai';
 import {
-  AudioReference,
-  ToolDecision,
-  executeTool,
-  buildDecisionPrompt,
-  buildConversationPrompt,
-} from '@/lib/agents/shared';
+  getMessages,
+  addMessages,
+} from '@/lib/ai/conversationStore';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -24,13 +23,23 @@ type ChatContext = {
 type ChatRequest = {
   messages: ChatMessage[];
   context?: ChatContext;
+  sessionId?: string;
 };
 
 type ChatResponse = {
   message: string;
   toolUsed: string;
   action?: TimelineAction;
+  sessionId?: string;
 };
+
+// Convert client messages to ModelMessages
+function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
+  return messages.map((msg) => ({
+    role: msg.role,
+    content: msg.content,
+  }));
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -54,58 +63,48 @@ export async function POST(request: NextRequest) {
 
     const clips = body.context?.clips ?? [];
     const audioClips = body.context?.audioClips ?? [];
-    const lastUser = body.messages[body.messages.length - 1]?.content ?? '';
+    const sessionId = body.sessionId || crypto.randomUUID();
 
-    // Build the decision prompt with examples and context
-    const decisionPrompt = buildDecisionPrompt(lastUser, clips, audioClips);
+    // Get existing conversation history from store
+    const existingMessages = getMessages(sessionId);
 
-    // Get tool decision from Gemini
-    const decisionText = await callGeminiText(decisionPrompt);
+    // Get new messages (only the ones not in history)
+    // Usually this is just the last user message
+    const newMessages = toModelMessages(body.messages);
+    const lastMessage = newMessages[newMessages.length - 1];
 
-    // Parse the decision with debug logging
-    let decision: ToolDecision = { tool: 'none' };
-    if (decisionText) {
-      const parsed = parseJsonFromText<ToolDecision>(decisionText);
-      if (parsed) {
-        decision = parsed;
-      } else {
-        // Log parse failure for debugging
-        console.warn('[Chat Agent] Failed to parse tool decision');
-        console.warn('[Chat Agent] Raw response:', decisionText);
-      }
+    // Combine history with new message
+    const allMessages: ModelMessage[] = [...existingMessages];
+    if (lastMessage) {
+      allMessages.push(lastMessage);
     }
 
-    // Execute the tool
-    const result = await executeTool(decision, user.id, clips, audioClips);
+    // Call AI with tools
+    const result = await chatWithTools(allMessages, {
+      userId: user.id,
+      clips,
+      audioClips,
+    });
 
-    // If tool execution was successful and returned data
-    if (result.success && decision.tool !== 'none') {
-      const response: ChatResponse = {
-        message: result.data,
-        toolUsed: decision.tool,
-      };
-      if (result.action) {
-        response.action = result.action;
-      }
-      return NextResponse.json(response);
+    // Save the new user message and assistant response to conversation history
+    if (lastMessage) {
+      addMessages(sessionId, [
+        lastMessage,
+        { role: 'assistant', content: result.message },
+      ]);
     }
 
-    // If tool execution failed, return the error message
-    if (!result.success) {
-      return NextResponse.json({
-        message: result.error,
-        toolUsed: decision.tool,
-      } satisfies ChatResponse);
+    const response: ChatResponse = {
+      message: result.message,
+      toolUsed: result.toolUsed,
+      sessionId,
+    };
+
+    if (result.action) {
+      response.action = result.action;
     }
 
-    // For 'none' tool or empty result, generate a conversational response
-    const conversationPrompt = buildConversationPrompt(lastUser);
-    const responseText = await callGeminiText(conversationPrompt);
-
-    return NextResponse.json({
-      message: responseText ?? 'Unable to generate a response.',
-      toolUsed: 'none',
-    } satisfies ChatResponse);
+    return NextResponse.json(response);
   } catch (error) {
     console.error('[Chat Agent] Error:', error);
     return NextResponse.json(
