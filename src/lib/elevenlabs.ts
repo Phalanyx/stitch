@@ -2,11 +2,21 @@ import { v4 as uuid } from 'uuid';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { prisma } from '@/lib/prisma';
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
+const ELEVENLABS_API_KEY = process.env.ELEVEN_LABS_API_KEY!;
 const ELEVENLABS_API_URL = 'https://api.elevenlabs.io/v1';
 
-// Default voice ID - Rachel (a popular ElevenLabs voice)
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
+// Voice IDs
+const MALE_VOICE_ID = 'UgBBYS2sOqTuMpoF3BR0';
+const FEMALE_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
+
+// Default to male voice
+const DEFAULT_VOICE_ID = MALE_VOICE_ID;
+
+// Available voices (static, no API call needed)
+export const VOICES = [
+  { voice_id: MALE_VOICE_ID, name: 'Male', category: 'premade' },
+  { voice_id: FEMALE_VOICE_ID, name: 'Female', category: 'premade' },
+] as const;
 
 export interface VoiceSettings {
   stability?: number;
@@ -32,22 +42,10 @@ export interface GeneratedAudio {
 }
 
 /**
- * Get available voices from ElevenLabs
+ * Get available voices (static list, no API call)
  */
-export async function getVoices(): Promise<Array<{ voice_id: string; name: string; category: string }>> {
-  const response = await fetch(`${ELEVENLABS_API_URL}/voices`, {
-    headers: {
-      'xi-api-key': ELEVENLABS_API_KEY,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to fetch voices: ${error}`);
-  }
-
-  const data = await response.json();
-  return data.voices;
+export function getVoices(): Array<{ voice_id: string; name: string; category: string }> {
+  return [...VOICES];
 }
 
 /**
@@ -220,27 +218,14 @@ export async function generateSpeechStream(
 }
 
 /**
- * Get information about a specific voice
+ * Get information about a specific voice (from static list)
  */
-export async function getVoice(voiceId: string): Promise<{
+export function getVoice(voiceId: string): {
   voice_id: string;
   name: string;
   category: string;
-  description: string;
-  labels: Record<string, string>;
-}> {
-  const response = await fetch(`${ELEVENLABS_API_URL}/voices/${voiceId}`, {
-    headers: {
-      'xi-api-key': ELEVENLABS_API_KEY,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to fetch voice: ${error}`);
-  }
-
-  return response.json();
+} | null {
+  return VOICES.find((v) => v.voice_id === voiceId) ?? null;
 }
 
 /**

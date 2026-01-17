@@ -55,7 +55,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const voices = await getVoices();
+    const voices = getVoices();
 
     return NextResponse.json({ voices });
   } catch (error) {

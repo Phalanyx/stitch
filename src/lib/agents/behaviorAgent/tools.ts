@@ -1,4 +1,5 @@
 import { callGeminiText, parseJsonFromText } from '@/lib/ai/gemini';
+import { textToSpeechAndSave } from '@/lib/elevenlabs';
 import { getVideoMetadataForUser } from '@/lib/tools/videoMetadata';
 import { JsonValue, ToolRegistry } from './types';
 
@@ -78,6 +79,38 @@ export function createToolRegistry(): ToolRegistry {
           message: aiResult.message,
         },
       } as Record<string, JsonValue>;
+    },
+    createAudioFromText: async (args, context) => {
+      const text = String(args.text ?? '');
+      if (!text) {
+        return errorResponse('Missing text to convert to speech.');
+      }
+      if (text.length > 5000) {
+        return errorResponse('Text exceeds maximum length of 5000 characters.');
+      }
+      if (!context.userId) {
+        return errorResponse('Missing user context.');
+      }
+
+      const voiceId = args.voiceId ? String(args.voiceId) : undefined;
+      const fileName = args.fileName ? String(args.fileName) : undefined;
+
+      try {
+        const audio = await textToSpeechAndSave(context.userId, text, {
+          voiceId,
+          fileName,
+        });
+
+        return {
+          status: 'ok',
+          changed: true,
+          output: audio,
+        } as Record<string, JsonValue>;
+      } catch (error) {
+        return errorResponse(
+          error instanceof Error ? error.message : 'Failed to generate audio.'
+        );
+      }
     },
   };
 }
