@@ -8,6 +8,7 @@ import { Timeline } from './Timeline';
 import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { Loader2 } from 'lucide-react';
+import { AudioMetadata } from '@/types/audio';
 
 // Helper to extract video duration from URL
 const getVideoDuration = (url: string): Promise<number> => {
@@ -118,6 +119,17 @@ export function Editor() {
   const [currentTime, setCurrentTime] = useState(0);
   const isSeekingRef = useRef(false);
 
+  // State for audio created by the chat agent
+  const [agentCreatedAudio, setAgentCreatedAudio] = useState<AudioMetadata | null>(null);
+
+  const handleAudioCreated = useCallback((audio: AudioMetadata) => {
+    setAgentCreatedAudio(audio);
+  }, []);
+
+  const handleNewAudioHandled = useCallback(() => {
+    setAgentCreatedAudio(null);
+  }, []);
+
   const handleSeek = useCallback((time: number) => {
     // Always update the timeline state first
     setCurrentTime(time);
@@ -142,9 +154,10 @@ export function Editor() {
     }
 
     // Reset seeking flag after a short delay to allow video timeupdate to be ignored
+    // Note: This timeout should match isTransitioningRef timeout in Preview.tsx (150ms)
     setTimeout(() => {
       isSeekingRef.current = false;
-    }, 100);
+    }, 150);
   }, [clips]);
 
   const handleTimeUpdate = useCallback((time: number) => {
@@ -239,7 +252,12 @@ export function Editor() {
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar onAddToTimeline={handleAddVideoWithAudio} onAddAudioToTimeline={addAudioToTimeline} />
+        <Sidebar
+          onAddToTimeline={handleAddVideoWithAudio}
+          onAddAudioToTimeline={addAudioToTimeline}
+          newAudio={agentCreatedAudio}
+          onNewAudioHandled={handleNewAudioHandled}
+        />
         <Preview
           clips={clips}
           audioLayers={audioLayers}
@@ -252,7 +270,7 @@ export function Editor() {
           onDropVideo={handleAddVideoWithAudio}
           isSeekingRef={isSeekingRef}
         />
-        <ChatAgent clips={clips} audioLayers={audioLayers} />
+        <ChatAgent clips={clips} audioClips={audioClips} onAudioCreated={handleAudioCreated} />
       </div>
       <Timeline
         clips={clips}

@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Send } from 'lucide-react';
 import { VideoReference } from '@/types/video';
-import { AudioLayer } from '@/types/audio';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -12,10 +11,10 @@ type ChatMessage = {
 
 interface ChatAgentProps {
   clips: VideoReference[];
-  audioLayers: AudioLayer[];
+  audioClips: VideoReference[];
 }
 
-export function ChatAgent({ clips, audioLayers }: ChatAgentProps) {
+export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -45,7 +44,7 @@ export function ChatAgent({ clips, audioLayers }: ChatAgentProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: nextMessages,
-          context: { clips, audioLayers },
+          context: { clips, audioClips },
         }),
       });
       const data = (await response.json()) as { message?: string; error?: string };
@@ -97,13 +96,13 @@ export function ChatAgent({ clips, audioLayers }: ChatAgentProps) {
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') handleSend();
+            if (event.key === 'Enter') sendMessage();
           }}
           placeholder="Ask about your timeline..."
           className="flex-1 bg-gray-800 text-gray-100 text-sm px-2 py-1 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
-          onClick={handleSend}
+          onClick={sendMessage}
           disabled={isSending}
           className="p-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
           aria-label="Send message"

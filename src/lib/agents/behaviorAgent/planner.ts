@@ -14,9 +14,9 @@ function fallbackPlan(behavior: BehaviorState): Plan {
 
   if (behavior.phase === 'previewing') {
     calls.push({
-      tool: 'analyzePlaybackFriction',
+      tool: 'surfaceExportHelp',
       args: { phase: behavior.phase },
-      rationale: 'User is previewing; detect scrubbing/looping pain points.',
+      rationale: 'User is previewing; surface export or playback guidance.',
     });
   }
 
@@ -33,13 +33,15 @@ function fallbackPlan(behavior: BehaviorState): Plan {
 
 export async function planToolCalls(
   behavior: BehaviorState,
-  toolNames: string[]
+  toolNames: string[],
+  prompt: string
 ): Promise<Plan> {
   const aiText = await callGeminiText(
     [
       'You are a planner that chooses which tools to call in order.',
       'Return JSON array only, each item: {"tool":"toolName","args":{...},"rationale":"..."}',
       `Allowed tools: ${toolNames.join(', ')}`,
+      `User prompt: ${prompt}`,
       `Behavior summary: ${behavior.summary}`,
       `Behavior phase: ${behavior.phase}`,
       `Event counts: ${JSON.stringify(behavior.eventCounts)}`,
