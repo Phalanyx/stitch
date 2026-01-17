@@ -1,14 +1,17 @@
 'use client';
 
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Preview } from './Preview';
+import { ChatAgent } from './ChatAgent';
 import { Timeline } from './Timeline';
 import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useVideoExport } from '@/hooks/useVideoExport';
 import { ExportProgressModal } from '@/components/ui/ExportProgressModal';
 import { Loader2, Download } from 'lucide-react';
+
+import { AudioMetadata } from '@/types/audio';
 
 // Helper to extract video duration from URL
 const getVideoDuration = (url: string): Promise<number> => {
@@ -56,12 +59,20 @@ export function Editor() {
     updateClipTrim,
     removeClip,
     // Audio handlers
-    audioClips,
+    audioLayers,
+    activeLayerId,
     addAudioToTimeline,
     addAudioAtTimestamp,
     updateAudioTimestamp,
     updateAudioClipTrim,
     removeAudioClip,
+    // Layer management
+    addLayer,
+    removeLayer,
+    setActiveLayer,
+    toggleLayerMute,
+    renameLayer,
+    cleanupEmptyLayers,
   } = useTimeline();
 
   // Enable auto-save
@@ -69,12 +80,60 @@ export function Editor() {
 
   // Video export
   const { exportToFile, isExporting, progress, error, reset } = useVideoExport();
+  const lastSentCount = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (lastSentCount.current === clips.length) return;
+    lastSentCount.current = clips.length;
+
+    const now = Date.now();
+    // Behavioral agent test only; not used for production outputs.
+    const events = [
+      { type: 'editor_opened', ts: now - 1000 },
+      ...clips.map((clip, index) => ({
+        type: 'clip_added',
+        ts: now - 900 + index * 50,
+        props: { id: clip.id },
+      })),
+    ];
+
+    fetch('/api/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || `Request failed: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data) => {
+        console.log('Agent output', data);
+      })
+      .catch((error) => {
+        console.error('Agent test failed', error);
+      });
+  }, [clips, isLoading]);
 
   // Playback state lifted from Preview
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const isSeekingRef = useRef(false);
+
+  // State for audio created by the chat agent
+  const [agentCreatedAudio, setAgentCreatedAudio] = useState<AudioMetadata | null>(null);
+
+  const handleAudioCreated = useCallback((audio: AudioMetadata) => {
+    setAgentCreatedAudio(audio);
+  }, []);
+
+  const handleNewAudioHandled = useCallback(() => {
+    setAgentCreatedAudio(null);
+  }, []);
 
   const handleSeek = useCallback((time: number) => {
     // Always update the timeline state first
@@ -100,9 +159,10 @@ export function Editor() {
     }
 
     // Reset seeking flag after a short delay to allow video timeupdate to be ignored
+    // Note: This timeout should match isTransitioningRef timeout in Preview.tsx (150ms)
     setTimeout(() => {
       isSeekingRef.current = false;
-    }, 100);
+    }, 150);
   }, [clips]);
 
   const handleTimeUpdate = useCallback((time: number) => {
@@ -111,8 +171,8 @@ export function Editor() {
     setCurrentTime(time);
   }, []);
 
-  // Combined handler to add video and its audio track together
-  const handleAddVideoWithAudio = useCallback(async (video: { id: string; url: string; duration?: number }) => {
+  // Combined handler to add video and its linked audio track together
+  const handleAddVideoWithAudio = useCallback(async (video: { id: string; url: string; duration?: number; audio?: { id: string; url: string; duration: number | null } }) => {
     let duration = video.duration;
     // Extract duration if not provided
     if (!duration) {
@@ -124,8 +184,22 @@ export function Editor() {
     }
     const videoWithDuration = { ...video, duration };
     addVideoToTimeline(videoWithDuration);
-    // Also add the video's audio to the audio track
-    addAudioToTimeline(videoWithDuration);
+    // Add linked audio if available
+    if (video.audio) {
+      let audioDuration = video.audio.duration ?? undefined;
+      if (!audioDuration) {
+        try {
+          audioDuration = await getAudioDuration(video.audio.url);
+        } catch (error) {
+          console.error('Failed to extract audio duration:', error);
+        }
+      }
+      addAudioToTimeline({
+        id: video.audio.id,
+        url: video.audio.url,
+        duration: audioDuration,
+      });
+    }
   }, [addVideoToTimeline, addAudioToTimeline]);
 
   // Drop handlers for Timeline
@@ -141,11 +215,10 @@ export function Editor() {
     }
     const videoWithDuration = { ...video, duration };
     addVideoAtTimestamp(videoWithDuration, video.timestamp);
-    // Also add the video's audio at the same timestamp
-    addAudioAtTimestamp(videoWithDuration, video.timestamp);
-  }, [addVideoAtTimestamp, addAudioAtTimestamp]);
+    // Note: Linked audio is added by Timeline.tsx via onDropAudio callback
+  }, [addVideoAtTimestamp]);
 
-  const handleDropAudio = useCallback(async (audio: { id: string; url: string; duration?: number; timestamp: number }) => {
+  const handleDropAudio = useCallback(async (audio: { id: string; url: string; duration?: number; timestamp: number }, layerId: string) => {
     let duration = audio.duration;
     // Extract duration if not provided
     if (!duration) {
@@ -155,7 +228,7 @@ export function Editor() {
         console.error('Failed to extract audio duration:', error);
       }
     }
-    addAudioAtTimestamp({ ...audio, duration }, audio.timestamp);
+    addAudioAtTimestamp({ ...audio, duration }, audio.timestamp, layerId);
   }, [addAudioAtTimestamp]);
 
   const handleExport = useCallback(async () => {
@@ -175,6 +248,23 @@ export function Editor() {
   const handleCloseExportModal = useCallback(() => {
     reset();
   }, [reset]);
+  const handleAddLayerWithAudio = useCallback(async (audio: { id: string; url: string; duration?: number }, timestamp: number) => {
+    // First add a new layer
+    addLayer();
+    // The new layer becomes active, so we can use addAudioAtTimestamp without specifying layerId
+    let duration = audio.duration;
+    if (!duration) {
+      try {
+        duration = await getAudioDuration(audio.url);
+      } catch (error) {
+        console.error('Failed to extract audio duration:', error);
+      }
+    }
+    addAudioAtTimestamp({ ...audio, duration }, timestamp);
+  }, [addLayer, addAudioAtTimestamp]);
+
+  // Derive audioClips from audioLayers for ChatAgent
+  const audioClips = audioLayers.flatMap(layer => layer.clips);
 
   if (isLoading) {
     return (
@@ -200,10 +290,15 @@ export function Editor() {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar onAddToTimeline={handleAddVideoWithAudio} onAddAudioToTimeline={addAudioToTimeline} />
+        <Sidebar
+          onAddToTimeline={handleAddVideoWithAudio}
+          onAddAudioToTimeline={addAudioToTimeline}
+          newAudio={agentCreatedAudio}
+          onNewAudioHandled={handleNewAudioHandled}
+        />
         <Preview
           clips={clips}
-          audioClips={audioClips}
+          audioLayers={audioLayers}
           videoRef={videoRef}
           isPlaying={isPlaying}
           setIsPlaying={setIsPlaying}
@@ -213,10 +308,12 @@ export function Editor() {
           onDropVideo={handleAddVideoWithAudio}
           isSeekingRef={isSeekingRef}
         />
+        <ChatAgent clips={clips} audioClips={audioClips} />
       </div>
       <Timeline
         clips={clips}
-        audioClips={audioClips}
+        audioLayers={audioLayers}
+        activeLayerId={activeLayerId}
         onUpdateTimestamp={updateVideoTimestamp}
         onUpdateTrim={updateClipTrim}
         onRemove={removeClip}
@@ -225,6 +322,13 @@ export function Editor() {
         onRemoveAudio={removeAudioClip}
         onDropVideo={handleDropVideo}
         onDropAudio={handleDropAudio}
+        onSetActiveLayer={setActiveLayer}
+        onAddLayer={addLayer}
+        onRemoveLayer={removeLayer}
+        onToggleLayerMute={toggleLayerMute}
+        onRenameLayer={renameLayer}
+        onCleanupEmptyLayers={cleanupEmptyLayers}
+        onAddLayerWithAudio={handleAddLayerWithAudio}
         currentTime={currentTime}
         onSeek={handleSeek}
       />

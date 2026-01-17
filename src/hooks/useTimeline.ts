@@ -2,18 +2,28 @@ import { useEffect, useState } from 'react';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 import { VideoReference } from '@/types/video';
-import { AudioReference } from '@/types/audio';
+import { AudioReference, AudioLayer } from '@/types/audio';
 
 export function useTimeline() {
   const { clips, setClips, addVideoToTimeline, addVideoAtTimestamp, updateVideoTimestamp, updateClipTrim, removeClip } = useTimelineStore();
   const {
-    audioClips,
+    audioLayers,
+    activeLayerId,
     setAudioClips,
     addAudioToTimeline,
     addAudioAtTimestamp,
     updateAudioTimestamp,
     updateAudioClipTrim,
     removeAudioClip,
+    // Layer management
+    addLayer,
+    removeLayer,
+    setActiveLayer,
+    toggleLayerMute,
+    renameLayer,
+    cleanupEmptyLayers,
+    // Helper
+    getAllAudioClips,
   } = useAudioTimelineStore();
   const [isLoading, setIsLoading] = useState(true);
 
@@ -24,7 +34,7 @@ export function useTimeline() {
         if (response.ok) {
           const data = await response.json();
           const videoData = data.session_video as VideoReference[];
-          const audioData = data.session_audio as AudioReference[];
+          const audioData = data.session_audio as AudioReference[] | AudioLayer[];
           setClips(videoData ?? []);
           setAudioClips(audioData ?? []);
         }
@@ -47,11 +57,21 @@ export function useTimeline() {
     updateClipTrim,
     removeClip,
     // Audio handlers
-    audioClips,
+    audioLayers,
+    activeLayerId,
     addAudioToTimeline,
     addAudioAtTimestamp,
     updateAudioTimestamp,
     updateAudioClipTrim,
     removeAudioClip,
+    // Layer management
+    addLayer,
+    removeLayer,
+    setActiveLayer,
+    toggleLayerMute,
+    renameLayer,
+    cleanupEmptyLayers,
+    // Helper
+    getAllAudioClips,
   };
 }
