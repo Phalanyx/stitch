@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Upload, Film, Loader2 } from 'lucide-react';
 import { VideoMetadata } from '@/types/video';
+import { createClient } from '@/lib/supabase/client';
 
 interface SidebarProps {
   onAddToTimeline: (video: { id: string; url: string; duration?: number }) => void;
@@ -39,11 +40,23 @@ export function Sidebar({ onAddToTimeline }: SidebarProps) {
     setIsUploading(true);
 
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        console.error('No session found');
+        setIsUploading(false);
+        return;
+      }
+
       const formData = new FormData();
       formData.append('file', file);
 
       const response = await fetch('/api/upload', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: formData,
       });
 
