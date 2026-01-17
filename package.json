@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:start": "npx supabase start",
+    "db:stop": "npx supabase stop",
+    "db:migrate": "npx prisma migrate dev",
+    "db:generate": "npx prisma generate",
+    "db:studio": "npx prisma studio",
+    "db:setup-storage": "tsx scripts/setup-storage.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.2.0",
@@ -34,6 +40,7 @@
     "prisma": "^7.2.0",
     "supabase": "^2.72.7",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

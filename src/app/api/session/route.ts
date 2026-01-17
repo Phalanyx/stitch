@@ -1,38 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 
-// GET: Fetch user's timeline session
+// Default user ID for development (no auth)
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000';
+
+// GET: Fetch timeline session
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const profile = await prisma.profile.findUnique({
-    where: { id: user.id },
+  let profile = await prisma.profile.findUnique({
+    where: { id: DEFAULT_USER_ID },
     select: { sessionVideo: true },
   });
 
-  return NextResponse.json(profile?.sessionVideo ?? []);
-}
-
-// POST: Save user's timeline session
-export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Create profile if it doesn't exist
+  if (!profile) {
+    profile = await prisma.profile.create({
+      data: {
+        id: DEFAULT_USER_ID,
+        sessionVideo: [],
+      },
+      select: { sessionVideo: true },
+    });
   }
 
+  return NextResponse.json(profile.sessionVideo);
+}
+
+// POST: Save timeline session
+export async function POST(request: NextRequest) {
   const { session_video } = await request.json();
 
-  await prisma.profile.update({
-    where: { id: user.id },
-    data: { sessionVideo: session_video },
+  await prisma.profile.upsert({
+    where: { id: DEFAULT_USER_ID },
+    update: { sessionVideo: session_video },
+    create: {
+      id: DEFAULT_USER_ID,
+      sessionVideo: session_video,
+    },
   });
 
   return NextResponse.json({ success: true });
