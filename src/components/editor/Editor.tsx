@@ -134,9 +134,10 @@ export function Editor() {
     }
 
     // Reset seeking flag after a short delay to allow video timeupdate to be ignored
+    // Note: This timeout should match isTransitioningRef timeout in Preview.tsx (150ms)
     setTimeout(() => {
       isSeekingRef.current = false;
-    }, 100);
+    }, 150);
   }, [clips]);
 
   const handleTimeUpdate = useCallback((time: number) => {
