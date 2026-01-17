@@ -57,7 +57,7 @@ export function TimelineClip({
       onMouseDown={handleMouseDown}
     >
       <span className="text-white text-xs truncate flex-1">
-        {clip.id.slice(0, 8)}...
+        {(clip.videoId ?? clip.id).slice(0, 8)}...
       </span>
       <button
         onClick={(e) => {

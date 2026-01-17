@@ -1,5 +1,6 @@
 export interface VideoReference {
   id: string;
+  videoId?: string;
   url: string;
   timestamp: number;
   duration: number;
