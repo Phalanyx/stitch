@@ -119,7 +119,19 @@ export async function POST(request: NextRequest) {
       twelveLabsStatus,
       audioId,
     },
+    include: { audio: true },
   });
 
-  return NextResponse.json({ video });
+  // Convert BigInt fileSize to number for JSON serialization
+  const serializedVideo = {
+    ...video,
+    audio: video.audio
+      ? {
+          ...video.audio,
+          fileSize: video.audio.fileSize ? Number(video.audio.fileSize) : null,
+        }
+      : null,
+  };
+
+  return NextResponse.json({ video: serializedVideo });
 }

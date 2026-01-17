@@ -14,7 +14,19 @@ export async function GET() {
   const videos = await prisma.video.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
+    include: { audio: true },
   });
 
-  return NextResponse.json(videos);
+  // Convert BigInt fileSize to number for JSON serialization
+  const serializedVideos = videos.map((video) => ({
+    ...video,
+    audio: video.audio
+      ? {
+          ...video.audio,
+          fileSize: video.audio.fileSize ? Number(video.audio.fileSize) : null,
+        }
+      : null,
+  }));
+
+  return NextResponse.json(serializedVideos);
 }

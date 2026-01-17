@@ -12,7 +12,7 @@ import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 
 interface SidebarProps {
-  onAddToTimeline: (video: { id: string; url: string; duration?: number }) => void;
+  onAddToTimeline: (video: { id: string; url: string; duration?: number; audio?: { id: string; url: string; duration: number | null } }) => void;
   onAddAudioToTimeline: (audio: { id: string; url: string; duration?: number }) => void;
 }
 
@@ -213,6 +213,12 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
         id: video.id,
         url: video.url,
         duration,
+        // Include linked audio data if available
+        audio: video.audio ? {
+          id: video.audio.id,
+          url: video.audio.url,
+          duration: video.audio.duration,
+        } : undefined,
       });
     } catch (error) {
       console.error('Failed to add video to timeline:', error);
@@ -539,12 +545,22 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
             e.preventDefault();
             return;
           }
-          e.dataTransfer.setData('application/json', JSON.stringify({
+          // Build drag data - include linked audio for videos
+          const dragData: Record<string, unknown> = {
             type,
             id: item.id,
             url: item.url,
             duration: item.duration,
-          }));
+          };
+          // If this is a video with linked audio, include the audio data
+          if (type === 'video' && 'audio' in item && item.audio) {
+            dragData.audio = {
+              id: item.audio.id,
+              url: item.audio.url,
+              duration: item.audio.duration,
+            };
+          }
+          e.dataTransfer.setData('application/json', JSON.stringify(dragData));
           e.dataTransfer.effectAllowed = 'copy';
         }}
         className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-grab active:cursor-grabbing transition-colors group"
