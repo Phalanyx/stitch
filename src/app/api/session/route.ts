@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 
-// Default user ID for development (no auth)
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000';
-
-// GET: Fetch timeline session
+// GET: Fetch user's timeline session
 export async function GET() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   let profile = await prisma.profile.findUnique({
-    where: { id: DEFAULT_USER_ID },
+    where: { id: user.id },
     select: { sessionVideo: true },
   });
 
@@ -15,7 +20,7 @@ export async function GET() {
   if (!profile) {
     profile = await prisma.profile.create({
       data: {
-        id: DEFAULT_USER_ID,
+        id: user.id,
         sessionVideo: [],
       },
       select: { sessionVideo: true },
@@ -25,15 +30,22 @@ export async function GET() {
   return NextResponse.json(profile.sessionVideo);
 }
 
-// POST: Save timeline session
+// POST: Save user's timeline session
 export async function POST(request: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { session_video } = await request.json();
 
   await prisma.profile.upsert({
-    where: { id: DEFAULT_USER_ID },
+    where: { id: user.id },
     update: { sessionVideo: session_video },
     create: {
-      id: DEFAULT_USER_ID,
+      id: user.id,
       sessionVideo: session_video,
     },
   });

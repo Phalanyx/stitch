@@ -3,10 +3,14 @@ import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { v4 as uuid } from 'uuid';
 
-// Default user ID for development (no auth)
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000';
-
 export async function POST(request: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const formData = await request.formData();
   const file = formData.get('file') as File;
 
@@ -14,9 +18,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No file provided' }, { status: 400 });
   }
 
-  const supabase = await createClient();
   const videoId = uuid();
-  const filePath = `${DEFAULT_USER_ID}/${videoId}_${file.name}`;
+  const filePath = `${user.id}/${videoId}_${file.name}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
   // Upload to Supabase Storage
@@ -36,7 +39,7 @@ export async function POST(request: NextRequest) {
   const video = await prisma.video.create({
     data: {
       id: videoId,
-      userId: DEFAULT_USER_ID,
+      userId: user.id,
       url: publicUrl,
       fileName: file.name,
     },

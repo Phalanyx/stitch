@@ -1,13 +1,18 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 
-// Default user ID for development (no auth)
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000';
-
-// GET: List uploaded videos
+// GET: List user's uploaded videos
 export async function GET() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const videos = await prisma.video.findMany({
-    where: { userId: DEFAULT_USER_ID },
+    where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
   });
 
