@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Upload, Film, Music, Loader2, Pencil, Info, X, Check } from 'lucide-react';
+import { Upload, Film, Music, Loader2, Sparkles, AlertCircle } from 'lucide-react';
 import { VideoMetadata } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { createClient } from '@/lib/supabase/client';
@@ -9,6 +9,8 @@ import { ConfirmDeleteModal } from '@/components/ui/ConfirmDeleteModal';
 import { MediaPropertiesModal } from '@/components/ui/MediaPropertiesModal';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
+
+type UploadState = 'idle' | 'uploading' | 'processing' | 'complete' | 'error';
 
 interface SidebarProps {
   onAddToTimeline: (video: { id: string; url: string; duration?: number }) => void;
@@ -20,7 +22,7 @@ type MediaItem = (VideoMetadata | AudioMetadata) & { type: 'video' | 'audio' };
 export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps) {
   const [videos, setVideos] = useState<VideoMetadata[]>([]);
   const [audioFiles, setAudioFiles] = useState<AudioMetadata[]>([]);
-  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [videoUploadState, setVideoUploadState] = useState<UploadState>('idle');
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -168,7 +170,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploadingVideo(true);
+    setVideoUploadState('uploading');
 
     try {
       const supabase = createClient();
@@ -176,12 +178,17 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
 
       if (!session) {
         console.error('No session found');
-        setIsUploadingVideo(false);
+        setVideoUploadState('error');
         return;
       }
 
       const formData = new FormData();
       formData.append('file', file);
+
+      // Update to processing state after a short delay (simulating upload start)
+      const uploadTimer = setTimeout(() => {
+        setVideoUploadState('processing');
+      }, 2000);
 
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -191,17 +198,25 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
         body: formData,
       });
 
+      clearTimeout(uploadTimer);
+
       if (response.ok) {
         const { video } = await response.json();
         setVideos((prev) => [video, ...prev]);
+        setVideoUploadState('complete');
+        // Reset to idle after showing success
+        setTimeout(() => setVideoUploadState('idle'), 2000);
       } else {
         const error = await response.json();
         console.error('Upload failed:', error);
+        setVideoUploadState('error');
+        setTimeout(() => setVideoUploadState('idle'), 3000);
       }
     } catch (error) {
       console.error('Upload failed:', error);
+      setVideoUploadState('error');
+      setTimeout(() => setVideoUploadState('idle'), 3000);
     } finally {
-      setIsUploadingVideo(false);
       if (videoFileInputRef.current) {
         videoFileInputRef.current.value = '';
       }
@@ -455,15 +470,40 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
         />
         <button
           onClick={() => videoFileInputRef.current?.click()}
-          disabled={isUploadingVideo}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white rounded-md transition-colors"
+          disabled={videoUploadState !== 'idle'}
+          className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-md transition-colors ${
+            videoUploadState === 'error' 
+              ? 'bg-red-600' 
+              : videoUploadState === 'complete'
+              ? 'bg-green-600'
+              : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50'
+          }`}
         >
-          {isUploadingVideo ? (
+          {videoUploadState === 'uploading' && (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading...
+              Uploading video...
             </>
-          ) : (
+          )}
+          {videoUploadState === 'processing' && (
+            <>
+              <Sparkles className="w-4 h-4 animate-pulse" />
+              Processing with AI...
+            </>
+          )}
+          {videoUploadState === 'complete' && (
+            <>
+              <Sparkles className="w-4 h-4" />
+              Upload complete!
+            </>
+          )}
+          {videoUploadState === 'error' && (
+            <>
+              <AlertCircle className="w-4 h-4" />
+              Upload failed
+            </>
+          )}
+          {videoUploadState === 'idle' && (
             <>
               <Upload className="w-4 h-4" />
               Upload Video
@@ -483,9 +523,44 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
           </div>
         ) : (
           <div className="space-y-2">
-            {videos.map((video) =>
-              renderMediaItem(video, 'video', Film, 'text-blue-400', () => handleAddToTimeline(video))
-            )}
+            {videos.map((video) => (
+              <div
+                key={video.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('application/json', JSON.stringify({
+                    type: 'video',
+                    id: video.id,
+                    url: video.url,
+                    duration: video.duration,
+                  }));
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
+                className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-grab active:cursor-grabbing transition-colors group"
+                onClick={() => handleAddToTimeline(video)}
+              >
+                <div className="flex items-center gap-2">
+                  <Film className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span className="text-white text-sm truncate flex-1">
+                    {video.fileName}
+                  </span>
+                  {video.twelveLabsStatus === 'ready' && (
+                    <Sparkles className="w-3 h-3 text-purple-400 shrink-0" title="AI processed" />
+                  )}
+                  {video.twelveLabsStatus === 'indexing' && (
+                    <Loader2 className="w-3 h-3 text-yellow-400 animate-spin shrink-0" title="Processing" />
+                  )}
+                  {video.twelveLabsStatus === 'failed' && (
+                    <AlertCircle className="w-3 h-3 text-red-400 shrink-0" title="AI processing failed" />
+                  )}
+                </div>
+                {video.summary && (
+                  <p className="text-gray-400 text-xs mt-1 line-clamp-2 group-hover:line-clamp-none">
+                    {video.summary}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

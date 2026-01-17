@@ -18,13 +18,15 @@ model Profile {
 }
 
 model Video {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  url       String
-  fileName  String   @map("file_name")
-  duration  Float?
-  fileSize  BigInt?  @map("file_size")
-  createdAt DateTime @default(now()) @map("created_at")
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  url              String
+  fileName         String   @map("file_name")
+  duration         Float?
+  createdAt        DateTime @default(now()) @map("created_at")
+  twelveLabsId     String?  @map("twelve_labs_id")
+  twelveLabsStatus String?  @map("twelve_labs_status")
+  summary          String?  @db.Text
 
   @@index([userId])
   @@map("videos")

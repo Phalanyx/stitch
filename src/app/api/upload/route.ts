@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { prisma } from '@/lib/prisma';
 import { v4 as uuid } from 'uuid';
+import { uploadVideoToTwelveLabs, generateVideoSummary } from '@/lib/twelvelabs';
 
 export async function POST(request: NextRequest) {
   // Get the access token from the Authorization header
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
   const filePath = `${user.id}/${videoId}_${file.name}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // Upload to Supabase Storage
+  // Step 1: Upload to Supabase Storage
   const { error: uploadError } = await supabaseAdmin.storage
     .from('raw-videos')
     .upload(filePath, buffer, { contentType: file.type });
@@ -42,14 +43,39 @@ export async function POST(request: NextRequest) {
     .from('raw-videos')
     .getPublicUrl(filePath);
 
-  // Save metadata to database via Prisma
+  // Step 2: Upload to Twelve Labs and wait for indexing
+  let twelveLabsId: string | null = null;
+  let twelveLabsStatus: string = 'pending';
+  let summary: string | null = null;
+
+  try {
+    const result = await uploadVideoToTwelveLabs(publicUrl, file.name);
+    twelveLabsId = result.videoId;
+    twelveLabsStatus = 'ready';
+
+    // Step 3: Generate summary using Pegasus
+    try {
+      summary = await generateVideoSummary(result.videoId);
+    } catch (summaryError) {
+      console.error('Failed to generate summary:', summaryError);
+      // Continue without summary - not critical
+    }
+  } catch (twelveLabsError) {
+    console.error('Twelve Labs upload failed:', twelveLabsError);
+    twelveLabsStatus = 'failed';
+    // Continue without Twelve Labs - video is still usable from Supabase
+  }
+
+  // Step 4: Save metadata to database via Prisma
   const video = await prisma.video.create({
     data: {
       id: videoId,
       userId: user.id,
       url: publicUrl,
       fileName: file.name,
-      fileSize: BigInt(file.size),
+      twelveLabsId,
+      twelveLabsStatus,
+      summary,
     },
   });
 
