@@ -468,7 +468,8 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
     type: 'video' | 'audio',
     Icon: typeof Film | typeof Music,
     iconColor: string,
-    onClick: () => void
+    onClick: () => void,
+    statusContent?: React.ReactNode
   ) => {
     const isHovered = hoveredId === item.id;
     const isEditing = editingId === item.id;
@@ -531,7 +532,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
               <span className="text-white text-sm truncate flex-1 min-w-0">
                 {item.fileName}
               </span>
-              {isHovered && (
+              {isHovered ? (
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <button
                     onClick={(e) => handleStartEdit(item.id, item.fileName, e)}
@@ -555,7 +556,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              )}
+              ) : statusContent}
             </>
           )}
         </div>
@@ -596,27 +597,14 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
           </div>
         ) : (
           <div className="space-y-2">
-            {videos.map((video) => (
-              <div
-                key={video.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('application/json', JSON.stringify({
-                    type: 'video',
-                    id: video.id,
-                    url: video.url,
-                    duration: video.duration,
-                  }));
-                  e.dataTransfer.effectAllowed = 'copy';
-                }}
-                className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-grab active:cursor-grabbing transition-colors group"
-                onClick={() => handleAddToTimeline(video)}
-              >
-                <div className="flex items-center gap-2">
-                  <Film className="w-4 h-4 text-blue-400 shrink-0" />
-                  <span className="text-white text-sm truncate flex-1">
-                    {video.fileName}
-                  </span>
+            {videos.map((video) =>
+              renderMediaItem(
+                video,
+                'video',
+                Film,
+                'text-blue-400',
+                () => handleAddToTimeline(video),
+                <>
                   {video.twelveLabsStatus === 'ready' && (
                     <span title="AI processed">
                       <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
@@ -632,9 +620,9 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
                       <AlertCircle className="w-3 h-3 text-red-400 shrink-0" />
                     </span>
                   )}
-                </div>
-              </div>
-            ))}
+                </>
+              )
+            )}
           </div>
         )}
       </div>
