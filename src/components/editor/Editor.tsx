@@ -1,47 +1,52 @@
 'use client';
 
+import { useRef, useState, useCallback } from 'react';
 import { Sidebar } from './Sidebar';
 import { Preview } from './Preview';
 import { Timeline } from './Timeline';
 import { useTimeline } from '@/hooks/useTimeline';
-import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { Loader2 } from 'lucide-react';
 
 export function Editor() {
-  const { clips, isLoading, addVideoToTimeline, addVideoAtTimestamp, updateVideoTimestamp, updateClipTrim, removeClip } =
+  const { clips, isLoading, addVideoToTimeline, updateVideoTimestamp, removeClip } =
     useTimeline();
-  const { audioClips, addAudioToTimeline, addAudioAtTimestamp, updateAudioTimestamp, updateAudioClipTrim, removeAudioClip } =
-    useAudioTimelineStore();
-
-  // Combined handler that adds both video and audio clips when a video is added
-  const handleAddVideoWithAudio = (video: { id: string; url: string; duration?: number }) => {
-    addVideoToTimeline(video);
-    // Add corresponding audio clip from the same video file
-    addAudioToTimeline({
-      id: video.id,
-      url: video.url,
-      duration: video.duration,
-    });
-  };
-
-  // Drop handlers for drag and drop onto timeline
-  const handleDropVideo = (video: { id: string; url: string; duration?: number; timestamp: number }) => {
-    addVideoAtTimestamp(video, video.timestamp);
-    // Also add audio at the same timestamp
-    addAudioAtTimestamp({
-      id: video.id,
-      url: video.url,
-      duration: video.duration,
-    }, video.timestamp);
-  };
-
-  const handleDropAudio = (audio: { id: string; url: string; duration?: number; timestamp: number }) => {
-    addAudioAtTimestamp(audio, audio.timestamp);
-  };
 
   // Enable auto-save
   useAutoSave();
+
+  // Playback state lifted from Preview
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const isSeekingRef = useRef(false);
+
+  const handleSeek = useCallback((time: number) => {
+    // Always update the timeline state first
+    setCurrentTime(time);
+
+    // Mark that we're seeking to prevent video timeupdate from overriding
+    isSeekingRef.current = true;
+
+    // Only sync video if within a valid range
+    if (videoRef.current) {
+      const videoDuration = videoRef.current.duration || 0;
+      if (time <= videoDuration) {
+        videoRef.current.currentTime = time;
+      }
+    }
+
+    // Reset seeking flag after a short delay to allow video timeupdate to be ignored
+    setTimeout(() => {
+      isSeekingRef.current = false;
+    }, 100);
+  }, []);
+
+  const handleTimeUpdate = useCallback((time: number) => {
+    // Don't override manual seeks with video's clamped time
+    if (isSeekingRef.current) return;
+    setCurrentTime(time);
+  }, []);
 
   if (isLoading) {
     return (
@@ -54,23 +59,22 @@ export function Editor() {
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar
-          onAddToTimeline={handleAddVideoWithAudio}
-          onAddAudioToTimeline={addAudioToTimeline}
+        <Sidebar onAddToTimeline={addVideoToTimeline} />
+        <Preview
+          clips={clips}
+          videoRef={videoRef}
+          isPlaying={isPlaying}
+          setIsPlaying={setIsPlaying}
+          currentTime={currentTime}
+          onTimeUpdate={handleTimeUpdate}
         />
-        <Preview clips={clips} audioClips={audioClips} />
       </div>
       <Timeline
         clips={clips}
-        audioClips={audioClips}
         onUpdateTimestamp={updateVideoTimestamp}
-        onUpdateTrim={updateClipTrim}
         onRemove={removeClip}
-        onUpdateAudioTimestamp={updateAudioTimestamp}
-        onUpdateAudioTrim={updateAudioClipTrim}
-        onRemoveAudio={removeAudioClip}
-        onDropVideo={handleDropVideo}
-        onDropAudio={handleDropAudio}
+        currentTime={currentTime}
+        onSeek={handleSeek}
       />
     </div>
   );

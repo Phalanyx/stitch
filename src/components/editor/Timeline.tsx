@@ -9,23 +9,25 @@ import { AudioReference } from '@/types/audio';
 
 interface TimelineProps {
   clips: VideoReference[];
-  audioClips: AudioReference[];
+  audioClips?: AudioReference[];
   onUpdateTimestamp: (id: string, newTime: number) => void;
-  onUpdateTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
+  onUpdateTrim?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   onRemove: (id: string) => void;
-  onUpdateAudioTimestamp: (id: string, newTime: number) => void;
-  onUpdateAudioTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
-  onRemoveAudio: (id: string) => void;
-  onDropVideo: (video: { id: string; url: string; duration?: number; timestamp: number }) => void;
-  onDropAudio: (audio: { id: string; url: string; duration?: number; timestamp: number }) => void;
+  onUpdateAudioTimestamp?: (id: string, newTime: number) => void;
+  onUpdateAudioTrim?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
+  onRemoveAudio?: (id: string) => void;
+  onDropVideo?: (video: { id: string; url: string; duration?: number; timestamp: number }) => void;
+  onDropAudio?: (audio: { id: string; url: string; duration?: number; timestamp: number }) => void;
+  currentTime: number;
+  onSeek: (time: number) => void;
 }
 
 const PIXELS_PER_SECOND = 50;
 const TRACK_LABEL_WIDTH = 48;
 
 export function Timeline({
-  clips,
-  audioClips,
+  clips = [],
+  audioClips = [],
   onUpdateTimestamp,
   onUpdateTrim,
   onRemove,
@@ -34,12 +36,15 @@ export function Timeline({
   onRemoveAudio,
   onDropVideo,
   onDropAudio,
+  currentTime,
+  onSeek,
 }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isDraggingOverVideo, setIsDraggingOverVideo] = useState(false);
   const [isDraggingOverAudio, setIsDraggingOverAudio] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
 
   // Measure container width on mount and resize
   useEffect(() => {
@@ -53,6 +58,30 @@ export function Timeline({
     window.addEventListener('resize', updateWidth);
     return () => window.removeEventListener('resize', updateWidth);
   }, []);
+
+  // Playhead dragging
+  useEffect(() => {
+    if (!isDraggingPlayhead) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const time = Math.max(0, x / PIXELS_PER_SECOND);
+      onSeek(time);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingPlayhead(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingPlayhead, onSeek]);
 
   const handleVideoDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -73,7 +102,7 @@ export function Timeline({
         const rect = e.currentTarget.getBoundingClientRect();
         const dropX = e.clientX - rect.left;
         const timestamp = dropX / PIXELS_PER_SECOND;
-        onDropVideo({ ...data, timestamp });
+        onDropVideo?.({ ...data, timestamp });
       }
     } catch (err) {
       console.error('Failed to parse drop data:', err);
@@ -99,7 +128,7 @@ export function Timeline({
         const rect = e.currentTarget.getBoundingClientRect();
         const dropX = e.clientX - rect.left;
         const timestamp = dropX / PIXELS_PER_SECOND;
-        onDropAudio({ ...data, timestamp });
+        onDropAudio?.({ ...data, timestamp });
       }
     } catch (err) {
       console.error('Failed to parse drop data:', err);
@@ -163,18 +192,35 @@ export function Timeline({
           className="relative h-full"
           style={{ width: `${timelineWidth}px` }}
         >
-          {/* Time markers */}
-          <div className="absolute top-0 left-0 right-0 h-6 flex border-b border-gray-700">
+          {/* Time markers - clickable for seeking */}
+          <div
+            className="absolute top-0 left-0 right-0 h-6 flex border-b border-gray-700 cursor-pointer"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const clickX = e.clientX - rect.left;
+              const time = clickX / PIXELS_PER_SECOND;
+              onSeek(Math.max(0, time));
+            }}
+          >
             {markers.map((second) => (
               <div
                 key={second}
-                className="absolute text-xs text-gray-400"
+                className="absolute text-xs text-gray-400 pointer-events-none"
                 style={{ left: `${second * PIXELS_PER_SECOND}px` }}
               >
                 <div className="h-2 w-px bg-gray-600" />
                 <span className="ml-1">{second}s</span>
               </div>
             ))}
+          </div>
+
+          {/* Playhead */}
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-white z-20 cursor-ew-resize"
+            style={{ left: `${currentTime * PIXELS_PER_SECOND}px` }}
+            onMouseDown={() => setIsDraggingPlayhead(true)}
+          >
+            <div className="absolute -top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-white rounded-full" />
           </div>
 
           {/* Video track */}
@@ -192,7 +238,7 @@ export function Timeline({
                 clip={clip}
                 pixelsPerSecond={PIXELS_PER_SECOND}
                 onUpdateTimestamp={onUpdateTimestamp}
-                onUpdateTrim={onUpdateTrim}
+                onUpdateTrim={onUpdateTrim!}
                 onRemove={onRemove}
               />
             ))}
@@ -212,9 +258,9 @@ export function Timeline({
                 key={clip.id}
                 clip={clip}
                 pixelsPerSecond={PIXELS_PER_SECOND}
-                onUpdateTimestamp={onUpdateAudioTimestamp}
-                onUpdateTrim={onUpdateAudioTrim}
-                onRemove={onRemoveAudio}
+                onUpdateTimestamp={onUpdateAudioTimestamp!}
+                onUpdateTrim={onUpdateAudioTrim!}
+                onRemove={onRemoveAudio!}
               />
             ))}
           </div>
