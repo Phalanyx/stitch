@@ -145,8 +145,8 @@ export function Editor() {
     setCurrentTime(time);
   }, []);
 
-  // Combined handler to add video and its audio track together
-  const handleAddVideoWithAudio = useCallback(async (video: { id: string; url: string; duration?: number }) => {
+  // Combined handler to add video and its linked audio track together
+  const handleAddVideoWithAudio = useCallback(async (video: { id: string; url: string; duration?: number; audio?: { id: string; url: string; duration: number | null } }) => {
     let duration = video.duration;
     // Extract duration if not provided
     if (!duration) {
@@ -158,8 +158,22 @@ export function Editor() {
     }
     const videoWithDuration = { ...video, duration };
     addVideoToTimeline(videoWithDuration);
-    // Also add the video's audio to the audio track
-    addAudioToTimeline(videoWithDuration);
+    // Add linked audio if available
+    if (video.audio) {
+      let audioDuration = video.audio.duration ?? undefined;
+      if (!audioDuration) {
+        try {
+          audioDuration = await getAudioDuration(video.audio.url);
+        } catch (error) {
+          console.error('Failed to extract audio duration:', error);
+        }
+      }
+      addAudioToTimeline({
+        id: video.audio.id,
+        url: video.audio.url,
+        duration: audioDuration,
+      });
+    }
   }, [addVideoToTimeline, addAudioToTimeline]);
 
   // Drop handlers for Timeline
@@ -175,9 +189,8 @@ export function Editor() {
     }
     const videoWithDuration = { ...video, duration };
     addVideoAtTimestamp(videoWithDuration, video.timestamp);
-    // Also add the video's audio at the same timestamp
-    addAudioAtTimestamp(videoWithDuration, video.timestamp);
-  }, [addVideoAtTimestamp, addAudioAtTimestamp]);
+    // Note: Linked audio is added by Timeline.tsx via onDropAudio callback
+  }, [addVideoAtTimestamp]);
 
   const handleDropAudio = useCallback(async (audio: { id: string; url: string; duration?: number; timestamp: number }) => {
     let duration = audio.duration;
