@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { prisma } from '@/lib/prisma';
 import { v4 as uuid } from 'uuid';
+import { createTwelveLabsTask } from '@/lib/twelvelabs';
 
 export async function POST(request: NextRequest) {
   // Get the access token from the Authorization header
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
   const filePath = `${user.id}/${videoId}_${file.name}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // Upload to Supabase Storage
+  // Step 1: Upload to Supabase Storage
   const { error: uploadError } = await supabaseAdmin.storage
     .from('raw-videos')
     .upload(filePath, buffer, { contentType: file.type });
@@ -42,21 +43,31 @@ export async function POST(request: NextRequest) {
     .from('raw-videos')
     .getPublicUrl(filePath);
 
-  // Save metadata to database via Prisma
+  // Step 2: Create Twelve Labs task (async - returns immediately)
+  let twelveLabsTaskId: string | null = null;
+  let twelveLabsStatus: string = 'pending';
+
+  try {
+    const result = await createTwelveLabsTask(publicUrl, file.name);
+    twelveLabsTaskId = result.taskId;
+    twelveLabsStatus = 'indexing';
+  } catch (twelveLabsError) {
+    console.error('Twelve Labs task creation failed:', twelveLabsError);
+    twelveLabsStatus = 'failed';
+    // Continue without Twelve Labs - video is still usable from Supabase
+  }
+
+  // Step 3: Save metadata to database via Prisma
   const video = await prisma.video.create({
     data: {
       id: videoId,
       userId: user.id,
       url: publicUrl,
       fileName: file.name,
-      fileSize: BigInt(file.size),
+      twelveLabsTaskId,
+      twelveLabsStatus,
     },
   });
 
-  return NextResponse.json({
-    video: {
-      ...video,
-      fileSize: video.fileSize ? Number(video.fileSize) : null,
-    },
-  });
+  return NextResponse.json({ video });
 }

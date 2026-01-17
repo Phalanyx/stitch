@@ -93,8 +93,5 @@ export async function PATCH(
     data: { fileName },
   });
 
-  return NextResponse.json({
-    ...updatedVideo,
-    fileSize: updatedVideo.fileSize ? Number(updatedVideo.fileSize) : null,
-  });
+  return NextResponse.json(updatedVideo);
 }
