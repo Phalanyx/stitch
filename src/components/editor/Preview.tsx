@@ -237,6 +237,7 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
             ref={videoRef}
             src={activeClip.url}
             className="max-h-full max-w-full"
+            muted
             onEnded={handleVideoEnded}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
