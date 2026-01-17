@@ -8,6 +8,13 @@ export interface AudioReference {
   trimEnd?: number;    // Seconds trimmed from end (default 0)
 }
 
+export interface AudioLayer {
+  id: string;
+  name: string;
+  clips: AudioReference[];
+  muted: boolean;
+}
+
 export interface AudioMetadata {
   id: string;
   userId: string;

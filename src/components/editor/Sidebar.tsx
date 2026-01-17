@@ -62,7 +62,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
   const preUploadInputRef = useRef<HTMLInputElement>(null);
 
   const clips = useTimelineStore((state) => state.clips);
-  const audioClips = useAudioTimelineStore((state) => state.audioClips);
+  const audioLayers = useAudioTimelineStore((state) => state.audioLayers);
   const removeClipsByVideoId = useTimelineStore((state) => state.removeClipsByVideoId);
   const removeClipsByAudioId = useAudioTimelineStore((state) => state.removeClipsByAudioId);
 
@@ -451,7 +451,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
   };
 
   const isAudioUsedInTimeline = (audioId: string) => {
-    return audioClips.some((clip) => clip.audioId === audioId);
+    return audioLayers.some((layer) => layer.clips.some((clip) => clip.audioId === audioId));
   };
 
   const handleStartEdit = (id: string, currentName: string, e: React.MouseEvent) => {

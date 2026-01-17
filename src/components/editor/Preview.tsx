@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect, RefObject } from 'react';
+import { useState, useRef, useEffect, RefObject, useMemo } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { VideoReference } from '@/types/video';
-import { AudioReference } from '@/types/audio';
+import { AudioLayer } from '@/types/audio';
 
 interface PreviewProps {
   clips: VideoReference[];
-  audioClips: AudioReference[];
+  audioLayers: AudioLayer[];
   videoRef: RefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
@@ -18,7 +18,7 @@ interface PreviewProps {
   isSeekingRef: RefObject<boolean>;
 }
 
-export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onSeek, onDropVideo, isSeekingRef }: PreviewProps) {
+export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onSeek, onDropVideo, isSeekingRef }: PreviewProps) {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const prevActiveClipIdRef = useRef<string | null>(null);
@@ -28,6 +28,13 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
   const reverseGlobalTimeRef = useRef<number>(0);
 
   const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
+
+  // Flatten unmuted audio layers into a single array for playback
+  const audioClips = useMemo(() => {
+    return audioLayers
+      .filter(layer => !layer.muted)
+      .flatMap(layer => layer.clips);
+  }, [audioLayers]);
 
   // Create/update audio elements for each audio clip
   useEffect(() => {

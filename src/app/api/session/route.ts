@@ -59,15 +59,33 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Validate audio track for overlaps
+  // Validate audio track(s) for overlaps
   if (session_audio !== undefined && Array.isArray(session_audio)) {
-    const audioViolations = validateTrack(session_audio as TimelineClip[]);
-    if (audioViolations.length > 0) {
-      return NextResponse.json({
-        success: false,
-        error: 'OVERLAPPING_CLIPS',
-        details: { track: 'audio', violations: audioViolations },
-      }, { status: 400 });
+    // Detect if new format (array of layers with 'clips' property) or old format (flat array of clips)
+    const isNewFormat = session_audio.length > 0 && 'clips' in session_audio[0];
+
+    if (isNewFormat) {
+      // New format: validate each layer's clips separately
+      for (const layer of session_audio as { id: string; clips: TimelineClip[] }[]) {
+        const audioViolations = validateTrack(layer.clips);
+        if (audioViolations.length > 0) {
+          return NextResponse.json({
+            success: false,
+            error: 'OVERLAPPING_CLIPS',
+            details: { track: `audio-layer-${layer.id}`, violations: audioViolations },
+          }, { status: 400 });
+        }
+      }
+    } else {
+      // Old format: validate as single flat array
+      const audioViolations = validateTrack(session_audio as TimelineClip[]);
+      if (audioViolations.length > 0) {
+        return NextResponse.json({
+          success: false,
+          error: 'OVERLAPPING_CLIPS',
+          details: { track: 'audio', violations: audioViolations },
+        }, { status: 400 });
+      }
     }
   }
 
