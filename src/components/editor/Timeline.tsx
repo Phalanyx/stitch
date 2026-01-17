@@ -24,6 +24,8 @@ interface TimelineProps {
 
 const PIXELS_PER_SECOND = 50;
 const TRACK_LABEL_WIDTH = 48;
+const SNAP_INCREMENT = 0.05;
+const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) * SNAP_INCREMENT;
 
 export function Timeline({
   clips = [],
@@ -67,7 +69,7 @@ export function Timeline({
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
-      const time = Math.max(0, x / PIXELS_PER_SECOND);
+      const time = Math.max(0, snapToGrid(x / PIXELS_PER_SECOND));
       onSeek(time);
     };
 
@@ -198,8 +200,8 @@ export function Timeline({
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               const clickX = e.clientX - rect.left;
-              const time = clickX / PIXELS_PER_SECOND;
-              onSeek(Math.max(0, time));
+              const time = snapToGrid(Math.max(0, clickX / PIXELS_PER_SECOND));
+              onSeek(time);
             }}
           >
             {markers.map((second) => (

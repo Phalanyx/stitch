@@ -4,6 +4,9 @@ import { useRef, useState } from 'react';
 import { X, Music } from 'lucide-react';
 import { AudioReference } from '@/types/audio';
 
+const SNAP_INCREMENT = 0.05;
+const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) * SNAP_INCREMENT;
+
 interface AudioTimelineClipProps {
   clip: AudioReference;
   pixelsPerSecond: number;
@@ -39,7 +42,7 @@ export function AudioTimelineClip({
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - dragStartX.current;
       const deltaTime = deltaX / pixelsPerSecond;
-      onUpdateTimestamp(clip.id, initialTimestamp.current + deltaTime);
+      onUpdateTimestamp(clip.id, snapToGrid(initialTimestamp.current + deltaTime));
     };
 
     const handleMouseUp = () => {
@@ -67,11 +70,11 @@ export function AudioTimelineClip({
 
       const newTrimStart = Math.max(0, startTrimStart + deltaTime);
       const maxTrim = clip.duration - (clip.trimEnd ?? 0) - 0.1; // Keep min 0.1s visible
-      const clampedTrimStart = Math.min(newTrimStart, maxTrim);
+      const clampedTrimStart = snapToGrid(Math.min(newTrimStart, maxTrim));
 
       const newTimestamp = startTimestamp + (clampedTrimStart - startTrimStart);
 
-      onUpdateTrim(clip.id, { trimStart: clampedTrimStart, timestamp: newTimestamp });
+      onUpdateTrim(clip.id, { trimStart: clampedTrimStart, timestamp: snapToGrid(newTimestamp) });
     };
 
     const handleMouseUp = () => {
@@ -98,7 +101,7 @@ export function AudioTimelineClip({
 
       const newTrimEnd = Math.max(0, startTrimEnd + deltaTime);
       const maxTrim = clip.duration - (clip.trimStart ?? 0) - 0.1; // Keep min 0.1s visible
-      const clampedTrimEnd = Math.min(newTrimEnd, maxTrim);
+      const clampedTrimEnd = snapToGrid(Math.min(newTrimEnd, maxTrim));
 
       onUpdateTrim(clip.id, { trimEnd: clampedTrimEnd });
     };

@@ -20,6 +20,7 @@ interface PreviewProps {
 export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onSeek, onDropVideo }: PreviewProps) {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const prevActiveClipIdRef = useRef<string | null>(null);
 
   const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -51,11 +52,14 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
       const visibleDuration = clip.duration - trimStart - (clip.trimEnd || 0);
       const clipEnd = clipStart + visibleDuration;
 
-      if (currentTime >= clipStart && currentTime < clipEnd) {
+      if (currentTime >= clipStart && currentTime <= clipEnd) {
         // Audio should be playing at this time
         const audioTime = currentTime - clipStart + trimStart;
-        // Only sync if significantly out of sync (to avoid choppy playback)
-        if (Math.abs(audio.currentTime - audioTime) > 0.3) {
+        // Use tighter sync threshold near clip boundaries
+        const progressInClip = (currentTime - clipStart) / visibleDuration;
+        const isNearBoundary = progressInClip < 0.1 || progressInClip > 0.9;
+        const syncThreshold = isNearBoundary ? 0.05 : 0.3;
+        if (Math.abs(audio.currentTime - audioTime) > syncThreshold) {
           audio.currentTime = audioTime;
         }
         if (isPlaying && audio.paused) {
@@ -77,21 +81,61 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
 
   // Cleanup all audio on unmount
   useEffect(() => {
+    const refs = audioRefs.current;
     return () => {
-      audioRefs.current.forEach(audio => {
+      refs.forEach(audio => {
         audio.pause();
       });
-      audioRefs.current.clear();
+      refs.clear();
     };
   }, []);
 
   // Find the clip that contains the current scrubber time
-  const activeClip = sortedClips.find(clip => {
+  // Use <= for clipEnd to ensure no gap at exact boundary (consistent with audio logic)
+  let activeClip = sortedClips.find(clip => {
     const clipStart = clip.timestamp;
     const visibleDuration = clip.duration - (clip.trimStart || 0) - (clip.trimEnd || 0);
     const clipEnd = clipStart + visibleDuration;
-    return currentTime >= clipStart && currentTime < clipEnd;
+    return currentTime >= clipStart && currentTime <= clipEnd;
   });
+
+  // Fallback: if no clip found (e.g., currentTime exactly at boundary between clips),
+  // find the next clip that starts at or after currentTime
+  if (!activeClip && sortedClips.length > 0) {
+    activeClip = sortedClips.find(clip => clip.timestamp >= currentTime) || sortedClips[sortedClips.length - 1];
+  }
+
+  // Sync video currentTime when clip changes
+  // Note: currentTime is intentionally NOT in dependencies - we only want this to run
+  // when the active clip ID changes, not every frame. The closure captures currentTime
+  // at the moment of clip change, which is the correct behavior.
+  useEffect(() => {
+    if (!activeClip || !videoRef.current) {
+      prevActiveClipIdRef.current = null;
+      return;
+    }
+
+    if (prevActiveClipIdRef.current !== activeClip.id) {
+      prevActiveClipIdRef.current = activeClip.id;
+
+      const handleLoadedMetadata = () => {
+        if (!videoRef.current) return;
+        const trimStart = activeClip.trimStart || 0;
+        const timeWithinClip = currentTime - activeClip.timestamp;
+        const videoTime = trimStart + timeWithinClip;
+        const maxVideoTime = activeClip.duration - (activeClip.trimEnd || 0);
+        videoRef.current.currentTime = Math.max(trimStart, Math.min(videoTime, maxVideoTime));
+        if (isPlaying) videoRef.current.play().catch(() => {});
+      };
+
+      if (videoRef.current.readyState >= 1) {
+        handleLoadedMetadata();
+      } else {
+        videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeClip?.id, isPlaying]);
 
   const handlePlayPause = () => {
     if (!videoRef.current || !activeClip) return;
@@ -122,10 +166,31 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
 
   const handleTimeUpdate = () => {
     if (!videoRef.current || !activeClip) return;
-    // Calculate global timeline time based on clip timestamp + video time
-    // video.currentTime includes trimStart offset, so subtract it to get visible clip position
+
     const trimStart = activeClip.trimStart || 0;
+    const trimEnd = activeClip.trimEnd || 0;
+    const visibleDuration = activeClip.duration - trimStart - trimEnd;
+    const clipEnd = activeClip.timestamp + visibleDuration;
+
     const globalTime = activeClip.timestamp + (videoRef.current.currentTime - trimStart);
+
+    // Check if we've reached the visible clip end
+    if (globalTime >= clipEnd) {
+      const currentIndex = sortedClips.findIndex(c => c.id === activeClip.id);
+      if (currentIndex >= 0 && currentIndex < sortedClips.length - 1) {
+        const nextClip = sortedClips[currentIndex + 1];
+        onSeek(nextClip.timestamp);
+        if (isPlaying && videoRef.current) {
+          videoRef.current.play();
+        }
+      } else {
+        setIsPlaying(false);
+        videoRef.current?.pause();
+        onSeek(0);
+      }
+      return;
+    }
+
     onTimeUpdate(globalTime);
   };
 
