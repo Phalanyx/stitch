@@ -3,10 +3,12 @@ import { createMemory } from '@/lib/agents/behaviorAgent/memory';
 import { runBehaviorAgent } from '@/lib/agents/behaviorAgent/orchestrator';
 import { createToolRegistry } from '@/lib/agents/behaviorAgent/tools';
 import { EventRecord, MemoryState } from '@/lib/agents/behaviorAgent/types';
+import { createClient } from '@/lib/supabase/server';
 
 type AgentRequest = {
   events: EventRecord[];
   memory?: MemoryState;
+  prompt?: string;
 };
 
 export async function POST(request: NextRequest) {
@@ -20,10 +22,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const tools = createToolRegistry();
     const memory = body.memory ?? createMemory();
 
-    const output = await runBehaviorAgent(body.events, tools, memory);
+    const output = await runBehaviorAgent(body.events, tools, memory, user.id, body.prompt);
 
     return NextResponse.json(output);
   } catch (error) {

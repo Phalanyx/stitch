@@ -8,6 +8,8 @@ export interface VideoReference {
   trimEnd?: number;    // Seconds trimmed from end (default 0)
 }
 
+import { AudioMetadata } from './audio';
+
 export interface VideoMetadata {
   id: string;
   userId: string;
@@ -20,4 +22,6 @@ export interface VideoMetadata {
   twelveLabsTaskId: string | null;
   twelveLabsStatus: string | null;
   summary: string | null;
+  audioId: string | null;
+  audio: AudioMetadata | null;
 }

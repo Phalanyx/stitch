@@ -17,9 +17,10 @@ export async function DELETE(
 
   const { id } = await params;
 
-  // Find the video and verify ownership
+  // Find the video and verify ownership, include audio relation
   const video = await prisma.video.findUnique({
     where: { id },
+    include: { audio: true },
   });
 
   if (!video) {
@@ -46,7 +47,29 @@ export async function DELETE(
     }
   }
 
-  // Delete from database
+  // Delete linked audio if exists
+  if (video.audio) {
+    // Delete audio file from storage
+    const audioUrlParts = video.audio.url.split('/raw-audio/');
+    if (audioUrlParts.length === 2) {
+      const audioStoragePath = audioUrlParts[1];
+      const { error: audioStorageError } = await supabaseAdmin.storage
+        .from('raw-audio')
+        .remove([audioStoragePath]);
+
+      if (audioStorageError) {
+        console.error('Failed to delete audio from storage:', audioStorageError);
+        // Continue with database deletion even if storage deletion fails
+      }
+    }
+
+    // Delete Audio record from database
+    await prisma.audio.delete({
+      where: { id: video.audio.id },
+    });
+  }
+
+  // Delete video from database
   await prisma.video.delete({
     where: { id },
   });

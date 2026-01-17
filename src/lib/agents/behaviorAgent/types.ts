@@ -37,6 +37,7 @@ export type ToolResult = {
   ok: boolean;
   output?: JsonValue;
   error?: string;
+  changed?: boolean;
 };
 
 export type ToolRegistry = Record<
@@ -53,6 +54,7 @@ export type OrchestratorContext = {
   newEvents: EventRecord[];
   memory: MemoryState;
   behavior: BehaviorState;
+  userId?: string;
 };
 
 export type OrchestratorOutput = {

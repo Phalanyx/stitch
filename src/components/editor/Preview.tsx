@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, RefObject } from 'react';
-import { Play, Pause } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { VideoReference } from '@/types/video';
 import { AudioReference } from '@/types/audio';
 
@@ -23,6 +23,9 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const prevActiveClipIdRef = useRef<string | null>(null);
   const isTransitioningRef = useRef(false);
+  const reverseAnimationFrameRef = useRef<number | null>(null);
+  const isPlayingReverseRef = useRef(false);
+  const reverseGlobalTimeRef = useRef<number>(0);
 
   const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -89,6 +92,13 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
         audio.pause();
       });
       refs.clear();
+    };
+  }, []);
+
+  // Cleanup reverse playback on unmount
+  useEffect(() => {
+    return () => {
+      stopReversePlayback();
     };
   }, []);
 
@@ -161,6 +171,28 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
         videoRef.current.play()
           .then(() => console.log('[Clip] play() succeeded'))
           .catch((e) => console.log('[Clip] play() error:', e));
+      
+      // Stop reverse playback when clip changes
+      stopReversePlayback();
+      
+      prevActiveClipIdRef.current = activeClip.id;
+
+      const handleLoadedMetadata = () => {
+        if (!videoRef.current) return;
+        const trimStart = activeClip.trimStart || 0;
+        const timeWithinClip = currentTime - activeClip.timestamp;
+        const videoTime = trimStart + timeWithinClip;
+        const maxVideoTime = activeClip.duration - (activeClip.trimEnd || 0);
+        videoRef.current.currentTime = Math.max(trimStart, Math.min(videoTime, maxVideoTime));
+        // Reset playback rate to forward when clip changes
+        videoRef.current.playbackRate = 1;
+        if (isPlaying) videoRef.current.play().catch(() => {});
+      };
+
+      if (videoRef.current.readyState >= 1) {
+        handleLoadedMetadata();
+      } else {
+        videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
       }
     };
 
@@ -180,15 +212,219 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeClip?.id, isPlaying]);
 
-  const handlePlayPause = () => {
-    if (!videoRef.current || !activeClip) return;
+  const stopReversePlayback = () => {
+    if (reverseAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(reverseAnimationFrameRef.current);
+      reverseAnimationFrameRef.current = null;
+    }
+    isPlayingReverseRef.current = false;
+  };
 
-    if (isPlaying) {
-      videoRef.current.pause();
-    } else {
+  const handlePause = () => {
+    if (!videoRef.current || !activeClip) return;
+    
+    // Stop reverse playback if active
+    stopReversePlayback();
+    
+    videoRef.current.pause();
+    setIsPlaying(false);
+  };
+
+  const handleSkipToBeginning = () => {
+    onSeek(0);
+    if (videoRef.current && isPlaying) {
       videoRef.current.play();
     }
-    setIsPlaying(!isPlaying);
+  };
+
+  const handleSkipToEnd = () => {
+    if (sortedClips.length === 0) return;
+    
+    const lastClip = sortedClips[sortedClips.length - 1];
+    const trimStart = lastClip.trimStart || 0;
+    const trimEnd = lastClip.trimEnd || 0;
+    const visibleDuration = lastClip.duration - trimStart - trimEnd;
+    const endTime = lastClip.timestamp + visibleDuration;
+    
+    onSeek(endTime);
+    setIsPlaying(false);
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
+  };
+
+  const handlePlayBackward = () => {
+    if (!videoRef.current || !activeClip) return;
+    
+    // Stop any existing reverse playback
+    stopReversePlayback();
+    
+    // Ensure video is ready and can display frames
+    if (videoRef.current.readyState < 2) {
+      // Wait for video to be ready
+      videoRef.current.addEventListener('loadeddata', () => {
+        startReversePlayback();
+      }, { once: true });
+      return;
+    }
+    
+    startReversePlayback();
+  };
+
+  const startReversePlayback = () => {
+    if (!videoRef.current || !activeClip) return;
+    
+    // Ensure video is loaded and ready
+    if (videoRef.current.readyState < 2) {
+      // Video not ready, wait for it
+      const handleLoadedData = () => {
+        videoRef.current?.removeEventListener('loadeddata', handleLoadedData);
+        startReversePlayback();
+      };
+      videoRef.current.addEventListener('loadeddata', handleLoadedData);
+      return;
+    }
+    
+    // Pause normal playback to take manual control
+    videoRef.current.pause();
+    videoRef.current.playbackRate = 1;
+    
+    // Initialize reverse playback with current global time
+    reverseGlobalTimeRef.current = currentTime;
+    
+    // Start manual reverse playback
+    isPlayingReverseRef.current = true;
+    setIsPlaying(true);
+    
+    // Start the reverse animation loop with smooth frame updates
+    // Use high-resolution timing to match forward playback speed exactly
+    let lastTimestamp = performance.now();
+    let lastVideoTime = videoRef.current.currentTime;
+    const REVERSE_SPEED = 1.0; // Playback speed (1x normal speed in reverse, matching forward)
+    // Update video element every 2 frames for smooth playback (~30fps visual updates)
+    // This reduces choppiness by giving the browser time to render frames
+    const VIDEO_UPDATE_INTERVAL = 2; // Update video every N frames
+    let frameCount = 0;
+    
+    const reverseStep = () => {
+      if (!videoRef.current || !isPlayingReverseRef.current) {
+        stopReversePlayback();
+        return;
+      }
+      
+      // Calculate actual elapsed time with high precision
+      const now = performance.now();
+      let deltaTime = (now - lastTimestamp) / 1000; // Convert to seconds
+      
+      // Cap delta time only to prevent large jumps (e.g., if tab was inactive or browser throttled)
+      // This ensures we don't skip large amounts of time, but allows normal playback speed
+      deltaTime = Math.min(deltaTime, 0.1); // Cap at 100ms to prevent jumps from tab inactivity
+      lastTimestamp = now;
+      
+      // Decrement global time at exactly the same rate as forward playback (1x speed)
+      reverseGlobalTimeRef.current = Math.max(0, reverseGlobalTimeRef.current - (deltaTime * REVERSE_SPEED));
+      const newGlobalTime = reverseGlobalTimeRef.current;
+      
+      // Find current active clip based on new global time
+      const currentActiveClip = sortedClips.find(clip => {
+        const clipStart = clip.timestamp;
+        const visibleDuration = clip.duration - (clip.trimStart || 0) - (clip.trimEnd || 0);
+        const clipEnd = clipStart + visibleDuration;
+        return newGlobalTime >= clipStart && newGlobalTime < clipEnd;
+      });
+      
+      if (!currentActiveClip) {
+        // No clip found, stop at beginning
+        onSeek(0);
+        stopReversePlayback();
+        setIsPlaying(false);
+        return;
+      }
+      
+      const trimStart = currentActiveClip.trimStart || 0;
+      const trimEnd = currentActiveClip.trimEnd || 0;
+      const clipStart = currentActiveClip.timestamp;
+      const visibleDuration = currentActiveClip.duration - trimStart - trimEnd;
+      
+      // Check if we've reached the start of current clip
+      if (newGlobalTime <= clipStart + 0.01) {
+        const currentIndex = sortedClips.findIndex(c => c.id === currentActiveClip.id);
+        
+        if (currentIndex > 0) {
+          // Move to previous clip
+          const prevClip = sortedClips[currentIndex - 1];
+          const prevTrimStart = prevClip.trimStart || 0;
+          const prevTrimEnd = prevClip.trimEnd || 0;
+          const prevVisibleDuration = prevClip.duration - prevTrimStart - prevTrimEnd;
+          const prevClipEnd = prevClip.timestamp + prevVisibleDuration;
+          
+          // Update global time ref and seek to end of previous clip
+          reverseGlobalTimeRef.current = prevClipEnd;
+          onSeek(prevClipEnd);
+          lastTimestamp = performance.now();
+          frameCount = 0; // Reset frame counter on clip transition
+          reverseAnimationFrameRef.current = requestAnimationFrame(reverseStep);
+        } else {
+          // Reached beginning of timeline
+          reverseGlobalTimeRef.current = 0;
+          onSeek(0);
+          stopReversePlayback();
+          setIsPlaying(false);
+        }
+        return;
+      }
+      
+      // Calculate video element time from global time
+      const timeWithinClip = newGlobalTime - clipStart;
+      const videoTime = trimStart + timeWithinClip;
+      const maxVideoTime = currentActiveClip.duration - trimEnd;
+      const minVideoTime = trimStart;
+      
+      // Clamp video time to valid range
+      const clampedVideoTime = Math.max(minVideoTime, Math.min(videoTime, maxVideoTime));
+      
+      // Update video element's currentTime at a controlled rate for smooth playback
+      // Updating every frame can cause choppiness; updating every N frames is smoother
+      frameCount++;
+      const shouldUpdateVideo = frameCount >= VIDEO_UPDATE_INTERVAL || 
+                                Math.abs(clampedVideoTime - lastVideoTime) > 0.1; // Force update on large jumps
+      
+      if (shouldUpdateVideo && videoRef.current.readyState >= 2) {
+        try {
+          // Update video element's currentTime for smooth visual playback
+          // This creates the reverse playback effect by seeking backward smoothly
+          videoRef.current.currentTime = clampedVideoTime;
+          lastVideoTime = clampedVideoTime;
+          frameCount = 0; // Reset frame counter after update
+        } catch (error) {
+          // Ignore errors from setting currentTime (e.g., if video is not ready)
+          console.warn('Failed to set video currentTime during reverse playback:', error);
+        }
+      }
+      
+      // Always update parent component with new global time for accurate scrubber position
+      // This keeps the timeline scrubber smooth even if video updates less frequently
+      onTimeUpdate(newGlobalTime);
+      
+      // Continue reverse playback immediately to maintain smooth frame rate
+      // This ensures we match forward playback's update frequency
+      reverseAnimationFrameRef.current = requestAnimationFrame(reverseStep);
+    };
+    
+    // Start the reverse playback loop
+    reverseAnimationFrameRef.current = requestAnimationFrame(reverseStep);
+  };
+
+  const handlePlayForward = () => {
+    if (!videoRef.current || !activeClip) return;
+    
+    // Stop reverse playback if active
+    stopReversePlayback();
+    
+    // Play forward at regular speed
+    videoRef.current.playbackRate = 1;
+    videoRef.current.play();
+    setIsPlaying(true);
   };
 
   const handleVideoEnded = () => {
@@ -252,21 +488,28 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
     // Note: URL comparison removed - browser normalizes src to absolute URL which
     // doesn't match relative/blob URLs. We rely on isTransitioningRef and isSeekingRef instead.
 
+    // Skip if playing in reverse (reverse playback handles its own updates)
+    if (isPlayingReverseRef.current) {
+      return;
+    }
+
     const trimStart = activeClip.trimStart || 0;
     const trimEnd = activeClip.trimEnd || 0;
     const visibleDuration = activeClip.duration - trimStart - trimEnd;
-    const clipEnd = activeClip.timestamp + visibleDuration;
-    const globalTime = activeClip.timestamp + (videoRef.current.currentTime - trimStart);
+    const clipStart = activeClip.timestamp;
+    const clipEnd = clipStart + visibleDuration;
+    
+    const globalTime = clipStart + (videoRef.current.currentTime - trimStart);
 
     console.log('[Clip] timeupdate:', {
       clipId: activeClip.id.slice(0, 8),
       videoTime: videoRef.current.currentTime.toFixed(3),
       globalTime: globalTime.toFixed(3),
+      clipStart: clipStart.toFixed(3),
       clipEnd: clipEnd.toFixed(3),
-      remaining: (clipEnd - globalTime).toFixed(3)
     });
 
-    // Check if we've reached the visible clip end (small threshold to trigger slightly early)
+    // Check if we've reached the visible clip end (when playing forward)
     if (globalTime >= clipEnd - 0.05) {
       isTransitioningRef.current = true;
 
@@ -351,6 +594,15 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
             onPlay={() => setIsPlaying(true)}
             onPause={() => {
               if (!isTransitioningRef.current) {
+            onPlay={() => {
+              // Only update if not in reverse mode (reverse mode manages its own state)
+              if (!isPlayingReverseRef.current) {
+                setIsPlaying(true);
+              }
+            }}
+            onPause={() => {
+              // Only update if not in reverse mode (reverse mode manages its own state)
+              if (!isPlayingReverseRef.current) {
                 setIsPlaying(false);
               }
             }}
@@ -363,18 +615,56 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
 
       {/* Controls Area */}
       <div className="flex-shrink-0 pb-4 px-4">
-        {/* Play Button */}
-        <div className="flex justify-center gap-2">
+        {/* Transport Controls */}
+        <div className="flex justify-center items-center gap-2">
+          {/* Skip to Beginning */}
           <button
-            onClick={handlePlayPause}
-            disabled={!activeClip}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleSkipToBeginning}
+            disabled={!activeClip || sortedClips.length === 0}
+            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Skip to beginning"
           >
-            {isPlaying ? (
-              <Pause className="w-6 h-6 text-white" />
-            ) : (
-              <Play className="w-6 h-6 text-white" />
-            )}
+            <SkipBack className="w-5 h-5 text-white" />
+          </button>
+
+          {/* Play Backward */}
+          <button
+            onClick={handlePlayBackward}
+            disabled={!activeClip}
+            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Play backward"
+          >
+            <Play className="w-5 h-5 text-white rotate-180" />
+          </button>
+
+          {/* Pause */}
+          <button
+            onClick={handlePause}
+            disabled={!activeClip || !isPlaying}
+            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Pause"
+          >
+            <Pause className="w-5 h-5 text-white" />
+          </button>
+
+          {/* Play Forward */}
+          <button
+            onClick={handlePlayForward}
+            disabled={!activeClip}
+            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Play forward"
+          >
+            <Play className="w-5 h-5 text-white" />
+          </button>
+
+          {/* Skip to End */}
+          <button
+            onClick={handleSkipToEnd}
+            disabled={!activeClip || sortedClips.length === 0}
+            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Skip to end"
+          >
+            <SkipForward className="w-5 h-5 text-white" />
           </button>
         </div>
       </div>

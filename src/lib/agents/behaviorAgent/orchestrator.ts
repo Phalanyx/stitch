@@ -12,7 +12,9 @@ import {
 export async function runBehaviorAgent(
   events: EventRecord[],
   tools: ToolRegistry,
-  previousMemory = createMemory()
+  previousMemory = createMemory(),
+  userId?: string,
+  prompt?: string
 ): Promise<OrchestratorOutput> {
   const { memory: nextMemoryBase, newEvents } = ingestNewEvents(events, previousMemory);
   const behavior = await interpretBehavior(newEvents, {
@@ -26,13 +28,17 @@ export async function runBehaviorAgent(
     summary: behavior.summary,
   };
 
-  const plan = await planToolCalls(behavior, Object.keys(tools));
+  const planPrompt =
+    prompt ||
+    `Interpret behavior and run tools to improve the editing experience. ${behavior.summary}`;
+  const plan = await planToolCalls(behavior, Object.keys(tools), planPrompt);
 
   const context: OrchestratorContext = {
     events,
     newEvents,
     memory,
     behavior,
+    userId,
   };
 
   const results = await runToolsSequentially(tools, context, plan.calls);
