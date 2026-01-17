@@ -55,12 +55,20 @@ export function Editor() {
     updateClipTrim,
     removeClip,
     // Audio handlers
-    audioClips,
+    audioLayers,
+    activeLayerId,
     addAudioToTimeline,
     addAudioAtTimestamp,
     updateAudioTimestamp,
     updateAudioClipTrim,
     removeAudioClip,
+    // Layer management
+    addLayer,
+    removeLayer,
+    setActiveLayer,
+    toggleLayerMute,
+    renameLayer,
+    cleanupEmptyLayers,
   } = useTimeline();
 
   // Enable auto-save
@@ -192,7 +200,7 @@ export function Editor() {
     // Note: Linked audio is added by Timeline.tsx via onDropAudio callback
   }, [addVideoAtTimestamp]);
 
-  const handleDropAudio = useCallback(async (audio: { id: string; url: string; duration?: number; timestamp: number }) => {
+  const handleDropAudio = useCallback(async (audio: { id: string; url: string; duration?: number; timestamp: number }, layerId: string) => {
     let duration = audio.duration;
     // Extract duration if not provided
     if (!duration) {
@@ -202,8 +210,23 @@ export function Editor() {
         console.error('Failed to extract audio duration:', error);
       }
     }
-    addAudioAtTimestamp({ ...audio, duration }, audio.timestamp);
+    addAudioAtTimestamp({ ...audio, duration }, audio.timestamp, layerId);
   }, [addAudioAtTimestamp]);
+
+  const handleAddLayerWithAudio = useCallback(async (audio: { id: string; url: string; duration?: number }, timestamp: number) => {
+    // First add a new layer
+    addLayer();
+    // The new layer becomes active, so we can use addAudioAtTimestamp without specifying layerId
+    let duration = audio.duration;
+    if (!duration) {
+      try {
+        duration = await getAudioDuration(audio.url);
+      } catch (error) {
+        console.error('Failed to extract audio duration:', error);
+      }
+    }
+    addAudioAtTimestamp({ ...audio, duration }, timestamp);
+  }, [addLayer, addAudioAtTimestamp]);
 
   if (isLoading) {
     return (
@@ -219,7 +242,7 @@ export function Editor() {
         <Sidebar onAddToTimeline={handleAddVideoWithAudio} onAddAudioToTimeline={addAudioToTimeline} />
         <Preview
           clips={clips}
-          audioClips={audioClips}
+          audioLayers={audioLayers}
           videoRef={videoRef}
           isPlaying={isPlaying}
           setIsPlaying={setIsPlaying}
@@ -229,11 +252,12 @@ export function Editor() {
           onDropVideo={handleAddVideoWithAudio}
           isSeekingRef={isSeekingRef}
         />
-        <ChatAgent clips={clips} audioClips={audioClips} />
+        <ChatAgent clips={clips} audioLayers={audioLayers} />
       </div>
       <Timeline
         clips={clips}
-        audioClips={audioClips}
+        audioLayers={audioLayers}
+        activeLayerId={activeLayerId}
         onUpdateTimestamp={updateVideoTimestamp}
         onUpdateTrim={updateClipTrim}
         onRemove={removeClip}
@@ -242,6 +266,13 @@ export function Editor() {
         onRemoveAudio={removeAudioClip}
         onDropVideo={handleDropVideo}
         onDropAudio={handleDropAudio}
+        onSetActiveLayer={setActiveLayer}
+        onAddLayer={addLayer}
+        onRemoveLayer={removeLayer}
+        onToggleLayerMute={toggleLayerMute}
+        onRenameLayer={renameLayer}
+        onCleanupEmptyLayers={cleanupEmptyLayers}
+        onAddLayerWithAudio={handleAddLayerWithAudio}
         currentTime={currentTime}
         onSeek={handleSeek}
       />

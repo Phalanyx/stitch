@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Send } from 'lucide-react';
 import { VideoReference } from '@/types/video';
+import { AudioLayer } from '@/types/audio';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -11,10 +12,10 @@ type ChatMessage = {
 
 interface ChatAgentProps {
   clips: VideoReference[];
-  audioClips: VideoReference[];
+  audioLayers: AudioLayer[];
 }
 
-export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
+export function ChatAgent({ clips, audioLayers }: ChatAgentProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -44,7 +45,7 @@ export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: nextMessages,
-          context: { clips, audioClips },
+          context: { clips, audioLayers },
         }),
       });
       const data = (await response.json()) as { message?: string; error?: string };
