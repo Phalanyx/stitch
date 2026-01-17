@@ -9,6 +9,7 @@ import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useBehaviorAgent } from '@/hooks/useBehaviorAgent';
 import { Loader2 } from 'lucide-react';
+import { AudioMetadata } from '@/types/audio';
 
 // Helper to extract video duration from URL
 const getVideoDuration = (url: string): Promise<number> => {
@@ -56,12 +57,20 @@ export function Editor() {
     updateClipTrim,
     removeClip,
     // Audio handlers
-    audioClips,
+    audioLayers,
+    activeLayerId,
     addAudioToTimeline,
     addAudioAtTimestamp,
     updateAudioTimestamp,
     updateAudioClipTrim,
     removeAudioClip,
+    // Layer management
+    addLayer,
+    removeLayer,
+    setActiveLayer,
+    toggleLayerMute,
+    renameLayer,
+    cleanupEmptyLayers,
   } = useTimeline();
 
   // Enable auto-save
@@ -101,6 +110,17 @@ export function Editor() {
   const [currentTime, setCurrentTime] = useState(0);
   const isSeekingRef = useRef(false);
 
+  // State for audio created by the chat agent
+  const [agentCreatedAudio, setAgentCreatedAudio] = useState<AudioMetadata | null>(null);
+
+  const handleAudioCreated = useCallback((audio: AudioMetadata) => {
+    setAgentCreatedAudio(audio);
+  }, []);
+
+  const handleNewAudioHandled = useCallback(() => {
+    setAgentCreatedAudio(null);
+  }, []);
+
   const handleSeek = useCallback((time: number) => {
     // Always update the timeline state first
     setCurrentTime(time);
@@ -125,9 +145,10 @@ export function Editor() {
     }
 
     // Reset seeking flag after a short delay to allow video timeupdate to be ignored
+    // Note: This timeout should match isTransitioningRef timeout in Preview.tsx (150ms)
     setTimeout(() => {
       isSeekingRef.current = false;
-    }, 100);
+    }, 150);
   }, [clips]);
 
   const handleTimeUpdate = useCallback((time: number) => {
@@ -183,7 +204,7 @@ export function Editor() {
     // Note: Linked audio is added by Timeline.tsx via onDropAudio callback
   }, [addVideoAtTimestamp]);
 
-  const handleDropAudio = useCallback(async (audio: { id: string; url: string; duration?: number; timestamp: number }) => {
+  const handleDropAudio = useCallback(async (audio: { id: string; url: string; duration?: number; timestamp: number }, layerId: string) => {
     let duration = audio.duration;
     // Extract duration if not provided
     if (!duration) {
@@ -193,8 +214,26 @@ export function Editor() {
         console.error('Failed to extract audio duration:', error);
       }
     }
-    addAudioAtTimestamp({ ...audio, duration }, audio.timestamp);
+    addAudioAtTimestamp({ ...audio, duration }, audio.timestamp, layerId);
   }, [addAudioAtTimestamp]);
+
+  const handleAddLayerWithAudio = useCallback(async (audio: { id: string; url: string; duration?: number }, timestamp: number) => {
+    // First add a new layer
+    addLayer();
+    // The new layer becomes active, so we can use addAudioAtTimestamp without specifying layerId
+    let duration = audio.duration;
+    if (!duration) {
+      try {
+        duration = await getAudioDuration(audio.url);
+      } catch (error) {
+        console.error('Failed to extract audio duration:', error);
+      }
+    }
+    addAudioAtTimestamp({ ...audio, duration }, timestamp);
+  }, [addLayer, addAudioAtTimestamp]);
+
+  // Derive audioClips from audioLayers for ChatAgent
+  const audioClips = audioLayers.flatMap(layer => layer.clips);
 
   if (isLoading) {
     return (
@@ -207,10 +246,15 @@ export function Editor() {
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar onAddToTimeline={handleAddVideoWithAudio} onAddAudioToTimeline={addAudioToTimeline} />
+        <Sidebar
+          onAddToTimeline={handleAddVideoWithAudio}
+          onAddAudioToTimeline={addAudioToTimeline}
+          newAudio={agentCreatedAudio}
+          onNewAudioHandled={handleNewAudioHandled}
+        />
         <Preview
           clips={clips}
-          audioClips={audioClips}
+          audioLayers={audioLayers}
           videoRef={videoRef}
           isPlaying={isPlaying}
           setIsPlaying={setIsPlaying}
@@ -224,7 +268,8 @@ export function Editor() {
       </div>
       <Timeline
         clips={clips}
-        audioClips={audioClips}
+        audioLayers={audioLayers}
+        activeLayerId={activeLayerId}
         onUpdateTimestamp={updateVideoTimestamp}
         onUpdateTrim={updateClipTrim}
         onRemove={removeClip}
@@ -233,6 +278,13 @@ export function Editor() {
         onRemoveAudio={removeAudioClip}
         onDropVideo={handleDropVideo}
         onDropAudio={handleDropAudio}
+        onSetActiveLayer={setActiveLayer}
+        onAddLayer={addLayer}
+        onRemoveLayer={removeLayer}
+        onToggleLayerMute={toggleLayerMute}
+        onRenameLayer={renameLayer}
+        onCleanupEmptyLayers={cleanupEmptyLayers}
+        onAddLayerWithAudio={handleAddLayerWithAudio}
         currentTime={currentTime}
         onSeek={handleSeek}
       />

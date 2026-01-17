@@ -14,6 +14,8 @@ import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 interface SidebarProps {
   onAddToTimeline: (video: { id: string; url: string; duration?: number; audio?: { id: string; url: string; duration: number | null } }) => void;
   onAddAudioToTimeline: (audio: { id: string; url: string; duration?: number }) => void;
+  newAudio?: AudioMetadata | null;
+  onNewAudioHandled?: () => void;
 }
 
 type MediaItem = (VideoMetadata | AudioMetadata) & { type: 'video' | 'audio' };
@@ -32,7 +34,7 @@ interface PreUploadModalState {
   customName: string;
 }
 
-export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps) {
+export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNewAudioHandled }: SidebarProps) {
   const [videos, setVideos] = useState<VideoMetadata[]>([]);
   const [audioFiles, setAudioFiles] = useState<AudioMetadata[]>([]);
   const [uploadModal, setUploadModal] = useState<UploadModalState>({
@@ -60,7 +62,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
   const preUploadInputRef = useRef<HTMLInputElement>(null);
 
   const clips = useTimelineStore((state) => state.clips);
-  const audioClips = useAudioTimelineStore((state) => state.audioClips);
+  const audioLayers = useAudioTimelineStore((state) => state.audioLayers);
   const removeClipsByVideoId = useTimelineStore((state) => state.removeClipsByVideoId);
   const removeClipsByAudioId = useAudioTimelineStore((state) => state.removeClipsByAudioId);
 
@@ -104,6 +106,14 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
       preUploadInputRef.current.select();
     }
   }, [preUploadModal.isOpen]);
+
+  // Handle new audio created by the chat agent
+  useEffect(() => {
+    if (newAudio && onNewAudioHandled) {
+      setAudioFiles((prev) => [newAudio, ...prev]);
+      onNewAudioHandled();
+    }
+  }, [newAudio, onNewAudioHandled]);
 
   // Poll task status for the current upload in modal
   const pollTaskStatus = useCallback(async (videoId: string) => {
@@ -441,7 +451,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
   };
 
   const isAudioUsedInTimeline = (audioId: string) => {
-    return audioClips.some((clip) => clip.audioId === audioId);
+    return audioLayers.some((layer) => layer.clips.some((clip) => clip.audioId === audioId));
   };
 
   const handleStartEdit = (id: string, currentName: string, e: React.MouseEvent) => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { VideoReference } from '@/types/video';
 import { useTimelineStore } from '@/stores/timelineStore';
@@ -14,6 +14,8 @@ interface TimelineClipProps {
   onUpdateTimestamp: (id: string, newTime: number) => void;
   onUpdateTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   onRemove: (id: string) => void;
+  isSelected?: boolean;
+  onSelect?: (id: string) => void;
 }
 
 export function TimelineClip({
@@ -22,15 +24,35 @@ export function TimelineClip({
   onUpdateTimestamp,
   onUpdateTrim,
   onRemove,
+  isSelected,
+  onSelect,
 }: TimelineClipProps) {
   const clipRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isPositionInvalid, setIsPositionInvalid] = useState(false);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const dragStartX = useRef(0);
   const initialTimestamp = useRef(0);
 
   const isPositionValid = useTimelineStore((state) => state.isPositionValid);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    if (!showContextMenu) return;
+    const handleClick = () => setShowContextMenu(false);
+    window.addEventListener('click', handleClick);
+    return () => window.removeEventListener('click', handleClick);
+  }, [showContextMenu]);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenuPos({ x: e.clientX, y: e.clientY });
+    setShowContextMenu(true);
+    onSelect?.(clip.id);
+  };
 
   // Calculate visible duration after trimming
   const trimStart = clip.trimStart ?? 0;
@@ -136,9 +158,16 @@ export function TimelineClip({
       className={`absolute top-2 h-16 rounded-md flex items-center ${
         isPositionInvalid
           ? 'bg-red-500 ring-2 ring-red-300'
+          : isSelected
+          ? 'bg-blue-500 ring-2 ring-white'
           : 'bg-blue-500'
       } ${isDragging ? 'cursor-grabbing opacity-80' : ''} ${isResizing ? 'opacity-90' : ''}`}
       style={{ left: `${left}px`, width: `${width}px`, minWidth: '20px' }}
+      onContextMenu={handleContextMenu}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect?.(clip.id);
+      }}
     >
       {/* Left resize handle */}
       <div
@@ -170,6 +199,25 @@ export function TimelineClip({
         className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-blue-700 hover:bg-blue-600 rounded-r-md"
         onMouseDown={handleRightResize}
       />
+
+      {/* Context menu */}
+      {showContextMenu && (
+        <div
+          className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg py-1 z-50"
+          style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700"
+            onClick={() => {
+              onRemove(clip.id);
+              setShowContextMenu(false);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
