@@ -3,17 +3,20 @@
 import { useEffect, useRef } from 'react';
 import { Send } from 'lucide-react';
 import { VideoReference } from '@/types/video';
+import { AudioMetadata } from '@/types/audio';
 import { useChatAgent } from '@/hooks/useChatAgent';
 
 interface ChatAgentProps {
   clips: VideoReference[];
   audioClips: VideoReference[];
+  onAudioCreated?: (audio: AudioMetadata) => void;
 }
 
-export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
+export function ChatAgent({ clips, audioClips, onAudioCreated }: ChatAgentProps) {
   const { messages, input, setInput, isSending, sendMessage } = useChatAgent(
     clips,
-    audioClips
+    audioClips,
+    onAudioCreated
   );
   const scrollRef = useRef<HTMLDivElement>(null);
 

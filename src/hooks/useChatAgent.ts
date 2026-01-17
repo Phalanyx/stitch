@@ -6,6 +6,7 @@ import {
   suggestNextAction,
 } from '@/lib/tools/chatTools';
 import { VideoReference } from '@/types/video';
+import { AudioMetadata } from '@/types/audio';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -20,6 +21,7 @@ type ToolDecision = {
     | 'suggest_next_action'
     | 'get_video_metadata'
     | 'list_uploaded_videos'
+    | 'create_audio_from_text'
     | 'none';
   args?: Record<string, string>;
 };
@@ -63,6 +65,10 @@ const TOOL_DESCRIPTIONS = [
     name: 'list_uploaded_videos',
     description: 'List the user uploaded videos with fileName and summary.',
   },
+  {
+    name: 'create_audio_from_text',
+    description: 'Generate speech audio from text using AI voice synthesis. Use this when the user wants to create narration, voiceover, or any spoken audio from text. Args: {text: "the text to speak"}.',
+  },
 ];
 
 async function callChatLlm(prompt: string): Promise<string> {
@@ -99,7 +105,11 @@ async function listUploadedVideos() {
   return data;
 }
 
-export function useChatAgent(clips: VideoReference[], audioClips: VideoReference[]) {
+export function useChatAgent(
+  clips: VideoReference[],
+  audioClips: VideoReference[],
+  onAudioCreated?: (audio: AudioMetadata) => void
+) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -114,6 +124,8 @@ export function useChatAgent(clips: VideoReference[], audioClips: VideoReference
 
   clipsRef.current = clips;
   audioRef.current = audioClips;
+  const onAudioCreatedRef = useRef(onAudioCreated);
+  onAudioCreatedRef.current = onAudioCreated;
 
   const knownClipIds = useMemo(
     () => clips.map((clip) => clip.videoId ?? clip.id),
@@ -211,6 +223,49 @@ export function useChatAgent(clips: VideoReference[], audioClips: VideoReference
           output: data,
         };
       }
+      if (decision.tool === 'create_audio_from_text') {
+        const text = decision.args?.text ?? '';
+        if (!text) {
+          return {
+            tool: decision.tool,
+            status: 'error',
+            changed: false,
+            output: 'Missing text argument.',
+          };
+        }
+        try {
+          const response = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          });
+          const data = (await response.json()) as { audio?: AudioMetadata; error?: string };
+          if (!response.ok) {
+            return {
+              tool: decision.tool,
+              status: 'error',
+              changed: false,
+              output: data.error || 'Failed to generate audio.',
+            };
+          }
+          if (data.audio && onAudioCreatedRef.current) {
+            onAudioCreatedRef.current(data.audio);
+          }
+          return {
+            tool: decision.tool,
+            status: 'ok',
+            changed: true,
+            output: data.audio,
+          };
+        } catch (error) {
+          return {
+            tool: decision.tool,
+            status: 'error',
+            changed: false,
+            output: error instanceof Error ? error.message : 'Failed to generate audio.',
+          };
+        }
+      }
       return {
         tool: decision.tool,
         status: 'error',
@@ -240,6 +295,7 @@ export function useChatAgent(clips: VideoReference[], audioClips: VideoReference
             `Known clip ids: ${knownClipIds.join(', ') || 'none'}`,
             'Prefer metadata-based tools when the user asks about clip content or names.',
             'Use list_uploaded_videos when the user asks about uploaded videos or library.',
+            'Use create_audio_from_text with args {"text":"..."} when the user wants to create narration, voiceover, or speech audio.',
             'Pick up to 3 tool calls. Return [] if none are needed.',
             'Use find_clip with args {"id":"..."} when the user references a clip id.',
             'Use get_video_metadata with args {"videoId":"..."} for a clip video id.',
