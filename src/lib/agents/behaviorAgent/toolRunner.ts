@@ -20,7 +20,14 @@ export async function runToolsSequentially(
 
     try {
       const output = await toolFn(call.args, context);
-      results.push({ tool: call.tool, ok: true, output });
+      const changed = Boolean(
+        output &&
+          typeof output === 'object' &&
+          !Array.isArray(output) &&
+          'changed' in output &&
+          Boolean((output as Record<string, unknown>).changed)
+      );
+      results.push({ tool: call.tool, ok: true, output, changed });
     } catch (error) {
       results.push({
         tool: call.tool,
