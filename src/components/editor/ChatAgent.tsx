@@ -1,73 +1,28 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Send } from 'lucide-react';
 import { VideoReference } from '@/types/video';
-
-type ChatMessage = {
-  role: 'user' | 'assistant';
-  content: string;
-};
+import { AudioMetadata } from '@/types/audio';
+import { useChatAgent } from '@/hooks/useChatAgent';
 
 interface ChatAgentProps {
   clips: VideoReference[];
   audioClips: VideoReference[];
+  onAudioCreated?: (audio: AudioMetadata) => void;
 }
 
-export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content: 'Ask me about your timeline, clips, or what to do next.',
-    },
-  ]);
-  const [input, setInput] = useState('');
-  const [isSending, setIsSending] = useState(false);
+export function ChatAgent({ clips, audioClips, onAudioCreated }: ChatAgentProps) {
+  const { messages, input, setInput, isSending, sendMessage } = useChatAgent(
+    clips,
+    audioClips,
+    onAudioCreated
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
-
-  const handleSend = async () => {
-    const trimmed = input.trim();
-    if (!trimmed || isSending) return;
-    setIsSending(true);
-
-    const nextMessages = [...messages, { role: 'user' as const, content: trimmed }];
-    setMessages(nextMessages);
-    setInput('');
-
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: nextMessages,
-          context: { clips, audioClips },
-        }),
-      });
-      const data = (await response.json()) as { message?: string; error?: string };
-      if (!response.ok) {
-        throw new Error(data.error || 'Request failed');
-      }
-      setMessages((current) => [
-        ...current,
-        { role: 'assistant', content: data.message ?? 'No response.' },
-      ]);
-    } catch (error) {
-      setMessages((current) => [
-        ...current,
-        {
-          role: 'assistant',
-          content:
-            error instanceof Error ? error.message : 'Failed to reach chat agent.',
-        },
-      ]);
-    } finally {
-      setIsSending(false);
-    }
-  };
 
   return (
     <div className="w-72 border-l border-gray-700 bg-gray-900 flex flex-col">
@@ -96,13 +51,13 @@ export function ChatAgent({ clips, audioClips }: ChatAgentProps) {
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') handleSend();
+            if (event.key === 'Enter') sendMessage();
           }}
           placeholder="Ask about your timeline..."
           className="flex-1 bg-gray-800 text-gray-100 text-sm px-2 py-1 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
-          onClick={handleSend}
+          onClick={sendMessage}
           disabled={isSending}
           className="p-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
           aria-label="Send message"

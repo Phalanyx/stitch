@@ -78,36 +78,9 @@ export function Editor() {
 
   // Enable auto-save
   useAutoSave();
-  const { runAgent } = useBehaviorAgent(clips, audioClips);
 
   // Video export
   const { exportToFile, isExporting, progress, error, reset } = useVideoExport();
-  const lastSentCount = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (isLoading) return;
-    if (lastSentCount.current === clips.length) return;
-    lastSentCount.current = clips.length;
-
-    const now = Date.now();
-    // Behavioral agent test only; not used for production outputs.
-    const events = [
-      { type: 'editor_opened', ts: now - 1000 },
-      ...clips.map((clip, index) => ({
-        type: 'clip_added',
-        ts: now - 900 + index * 50,
-        props: { id: clip.id },
-      })),
-    ];
-
-    runAgent(events)
-      .then((data) => {
-        console.log('Agent output', data);
-      })
-      .catch((error) => {
-        console.error('Agent test failed', error);
-      });
-  }, [clips, isLoading, runAgent]);
 
   // Playback state lifted from Preview
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -257,8 +230,35 @@ export function Editor() {
     addAudioAtTimestamp({ ...audio, duration }, timestamp);
   }, [addLayer, addAudioAtTimestamp]);
 
-  // Derive audioClips from audioLayers for ChatAgent
-  const audioClips = audioLayers.flatMap(layer => layer.clips);
+  // Derive audioClips from audioLayers for ChatAgent/agents
+  const audioClips = audioLayers.flatMap((layer) => layer.clips);
+  const { runAgent } = useBehaviorAgent(clips, audioClips);
+  const lastSentCount = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (lastSentCount.current === clips.length) return;
+    lastSentCount.current = clips.length;
+
+    const now = Date.now();
+    // Behavioral agent test only; not used for production outputs.
+    const events = [
+      { type: 'editor_opened', ts: now - 1000 },
+      ...clips.map((clip, index) => ({
+        type: 'clip_added',
+        ts: now - 900 + index * 50,
+        props: { id: clip.id },
+      })),
+    ];
+
+    runAgent(events)
+      .then((data) => {
+        console.log('Agent output', data);
+      })
+      .catch((error) => {
+        console.error('Agent test failed', error);
+      });
+  }, [clips, isLoading, runAgent]);
 
   if (isLoading) {
     return (
@@ -302,7 +302,11 @@ export function Editor() {
           onDropVideo={handleAddVideoWithAudio}
           isSeekingRef={isSeekingRef}
         />
-        <ChatAgent clips={clips} audioClips={audioClips} />
+        <ChatAgent
+          clips={clips}
+          audioClips={audioClips}
+          onAudioCreated={handleAudioCreated}
+        />
       </div>
       <Timeline
         clips={clips}
