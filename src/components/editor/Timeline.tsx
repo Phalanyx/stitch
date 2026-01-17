@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Film, Music } from 'lucide-react';
 import { TimelineClip } from './TimelineClip';
 import { AudioTimelineClip } from './AudioTimelineClip';
@@ -36,8 +36,23 @@ export function Timeline({
   onDropAudio,
 }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isDraggingOverVideo, setIsDraggingOverVideo] = useState(false);
   const [isDraggingOverAudio, setIsDraggingOverAudio] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  // Measure container width on mount and resize
+  useEffect(() => {
+    const updateWidth = () => {
+      if (scrollContainerRef.current) {
+        setContainerWidth(scrollContainerRef.current.clientWidth);
+      }
+    };
+
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, []);
 
   const handleVideoDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -108,12 +123,23 @@ export function Timeline({
     return endTime > max ? endTime : max;
   }, 0);
 
-  const maxEndTime = Math.max(videoMaxEndTime, audioMaxEndTime, 10); // Minimum 10 seconds
-  const timelineWidth = maxEndTime * PIXELS_PER_SECOND + 200; // Extra padding
+  const maxEndTime = Math.max(videoMaxEndTime, audioMaxEndTime);
 
-  // Generate time markers
+  // Calculate if we need scrolling (account for track label width)
+  const availableWidth = containerWidth - TRACK_LABEL_WIDTH;
+  const needsScroll = maxEndTime * PIXELS_PER_SECOND > availableWidth;
+
+  // Timeline fills container exactly, or expands for clips
+  const timelineWidth = needsScroll
+    ? (maxEndTime + 10) * PIXELS_PER_SECOND  // Extra space when scrolling
+    : availableWidth;
+
+  // Generate markers to fill the timeline
+  const timelineSeconds = timelineWidth / PIXELS_PER_SECOND;
+
+  // Generate time markers to fill the entire timeline
   const markers = [];
-  for (let i = 0; i <= maxEndTime + 2; i++) {
+  for (let i = 0; i <= Math.ceil(timelineSeconds); i++) {
     markers.push(i);
   }
 
@@ -131,7 +157,7 @@ export function Timeline({
       </div>
 
       {/* Timeline content */}
-      <div className="flex-1 overflow-x-auto">
+      <div ref={scrollContainerRef} className={`flex-1 ${needsScroll ? 'overflow-x-auto' : 'overflow-x-hidden'}`}>
         <div
           ref={containerRef}
           className="relative h-full"
