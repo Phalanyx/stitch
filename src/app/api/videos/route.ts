@@ -16,11 +16,5 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
   });
 
-  // Convert BigInt fileSize to Number for JSON serialization
-  const serializedVideos = videos.map((video) => ({
-    ...video,
-    fileSize: video.fileSize ? Number(video.fileSize) : null,
-  }));
-
-  return NextResponse.json(serializedVideos);
+  return NextResponse.json(videos);
 }

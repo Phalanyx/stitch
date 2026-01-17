@@ -1,16 +1,15 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Upload, Film, Music, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Upload, Film, Music, Loader2, Sparkles, AlertCircle, Pencil, Check, X, Info } from 'lucide-react';
 import { VideoMetadata } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { createClient } from '@/lib/supabase/client';
 import { ConfirmDeleteModal } from '@/components/ui/ConfirmDeleteModal';
 import { MediaPropertiesModal } from '@/components/ui/MediaPropertiesModal';
+import { UploadProgressModal, UploadStage } from '@/components/ui/UploadProgressModal';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
-
-type UploadState = 'idle' | 'uploading' | 'processing' | 'complete' | 'error';
 
 interface SidebarProps {
   onAddToTimeline: (video: { id: string; url: string; duration?: number }) => void;
@@ -19,10 +18,23 @@ interface SidebarProps {
 
 type MediaItem = (VideoMetadata | AudioMetadata) & { type: 'video' | 'audio' };
 
+interface UploadModalState {
+  isOpen: boolean;
+  stage: UploadStage;
+  fileName: string;
+  videoId: string | null;
+  errorMessage?: string;
+}
+
 export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps) {
   const [videos, setVideos] = useState<VideoMetadata[]>([]);
   const [audioFiles, setAudioFiles] = useState<AudioMetadata[]>([]);
-  const [videoUploadState, setVideoUploadState] = useState<UploadState>('idle');
+  const [uploadModal, setUploadModal] = useState<UploadModalState>({
+    isOpen: false,
+    stage: 'uploading',
+    fileName: '',
+    videoId: null,
+  });
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -73,6 +85,73 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
       editInputRef.current.select();
     }
   }, [editingId]);
+
+  // Poll task status for the current upload in modal
+  const pollTaskStatus = useCallback(async (videoId: string) => {
+    try {
+      const response = await fetch(`/api/videos/${videoId}/task-status`);
+      if (response.ok) {
+        const data = await response.json();
+
+        // Update videos list with new status
+        setVideos((prev) =>
+          prev.map((v) =>
+            v.id === videoId
+              ? {
+                  ...v,
+                  twelveLabsStatus: data.twelveLabsStatus,
+                  twelveLabsId: data.twelveLabsId,
+                  summary: data.summary,
+                }
+              : v
+          )
+        );
+
+        return data;
+      }
+    } catch (error) {
+      console.error('Failed to poll task status:', error);
+    }
+    return null;
+  }, []);
+
+  // Polling effect for modal indexing stage
+  useEffect(() => {
+    if (!uploadModal.isOpen || uploadModal.stage !== 'indexing' || !uploadModal.videoId) {
+      return;
+    }
+
+    const pollInterval = setInterval(async () => {
+      const status = await pollTaskStatus(uploadModal.videoId!);
+      if (status) {
+        if (status.twelveLabsStatus === 'ready') {
+          setUploadModal((prev) => ({ ...prev, stage: 'complete' }));
+        } else if (status.twelveLabsStatus === 'failed') {
+          setUploadModal((prev) => ({
+            ...prev,
+            stage: 'error',
+            errorMessage: 'AI processing failed',
+          }));
+        }
+      }
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
+  }, [uploadModal.isOpen, uploadModal.stage, uploadModal.videoId, pollTaskStatus]);
+
+  // Background polling for videos still indexing on page load
+  useEffect(() => {
+    const indexingVideos = videos.filter((v) => v.twelveLabsStatus === 'indexing');
+    if (indexingVideos.length === 0) return;
+
+    const pollInterval = setInterval(() => {
+      indexingVideos.forEach((video) => {
+        pollTaskStatus(video.id);
+      });
+    }, 10000);
+
+    return () => clearInterval(pollInterval);
+  }, [videos, pollTaskStatus]);
 
   const getVideoDuration = (url: string): Promise<number> => {
     return new Promise((resolve, reject) => {
@@ -170,7 +249,13 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setVideoUploadState('uploading');
+    // Open modal and start uploading
+    setUploadModal({
+      isOpen: true,
+      stage: 'uploading',
+      fileName: file.name,
+      videoId: null,
+    });
 
     try {
       const supabase = createClient();
@@ -178,17 +263,16 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
 
       if (!session) {
         console.error('No session found');
-        setVideoUploadState('error');
+        setUploadModal((prev) => ({
+          ...prev,
+          stage: 'error',
+          errorMessage: 'Not authenticated',
+        }));
         return;
       }
 
       const formData = new FormData();
       formData.append('file', file);
-
-      // Update to processing state after a short delay (simulating upload start)
-      const uploadTimer = setTimeout(() => {
-        setVideoUploadState('processing');
-      }, 2000);
 
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -198,24 +282,47 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
         body: formData,
       });
 
-      clearTimeout(uploadTimer);
-
       if (response.ok) {
         const { video } = await response.json();
         setVideos((prev) => [video, ...prev]);
-        setVideoUploadState('complete');
-        // Reset to idle after showing success
-        setTimeout(() => setVideoUploadState('idle'), 2000);
+
+        // If task was created successfully, start indexing stage
+        if (video.twelveLabsStatus === 'indexing') {
+          setUploadModal((prev) => ({
+            ...prev,
+            stage: 'indexing',
+            videoId: video.id,
+          }));
+        } else if (video.twelveLabsStatus === 'failed') {
+          setUploadModal((prev) => ({
+            ...prev,
+            stage: 'error',
+            errorMessage: 'AI processing failed to start',
+          }));
+        } else {
+          // Unexpected status, show as complete
+          setUploadModal((prev) => ({
+            ...prev,
+            stage: 'complete',
+            videoId: video.id,
+          }));
+        }
       } else {
         const error = await response.json();
         console.error('Upload failed:', error);
-        setVideoUploadState('error');
-        setTimeout(() => setVideoUploadState('idle'), 3000);
+        setUploadModal((prev) => ({
+          ...prev,
+          stage: 'error',
+          errorMessage: error.error || 'Upload failed',
+        }));
       }
     } catch (error) {
       console.error('Upload failed:', error);
-      setVideoUploadState('error');
-      setTimeout(() => setVideoUploadState('idle'), 3000);
+      setUploadModal((prev) => ({
+        ...prev,
+        stage: 'error',
+        errorMessage: 'Network error',
+      }));
     } finally {
       if (videoFileInputRef.current) {
         videoFileInputRef.current.value = '';
@@ -470,45 +577,11 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
         />
         <button
           onClick={() => videoFileInputRef.current?.click()}
-          disabled={videoUploadState !== 'idle'}
-          className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-md transition-colors ${
-            videoUploadState === 'error' 
-              ? 'bg-red-600' 
-              : videoUploadState === 'complete'
-              ? 'bg-green-600'
-              : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50'
-          }`}
+          disabled={uploadModal.isOpen && uploadModal.stage !== 'indexing' && uploadModal.stage !== 'complete' && uploadModal.stage !== 'error'}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-md transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50"
         >
-          {videoUploadState === 'uploading' && (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading video...
-            </>
-          )}
-          {videoUploadState === 'processing' && (
-            <>
-              <Sparkles className="w-4 h-4 animate-pulse" />
-              Processing with AI...
-            </>
-          )}
-          {videoUploadState === 'complete' && (
-            <>
-              <Sparkles className="w-4 h-4" />
-              Upload complete!
-            </>
-          )}
-          {videoUploadState === 'error' && (
-            <>
-              <AlertCircle className="w-4 h-4" />
-              Upload failed
-            </>
-          )}
-          {videoUploadState === 'idle' && (
-            <>
-              <Upload className="w-4 h-4" />
-              Upload Video
-            </>
-          )}
+          <Upload className="w-4 h-4" />
+          Upload Video
         </button>
       </div>
 
@@ -545,13 +618,19 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
                     {video.fileName}
                   </span>
                   {video.twelveLabsStatus === 'ready' && (
-                    <Sparkles className="w-3 h-3 text-purple-400 shrink-0" title="AI processed" />
+                    <span title="AI processed">
+                      <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
+                    </span>
                   )}
                   {video.twelveLabsStatus === 'indexing' && (
-                    <Loader2 className="w-3 h-3 text-yellow-400 animate-spin shrink-0" title="Processing" />
+                    <span title="Processing">
+                      <Loader2 className="w-3 h-3 text-yellow-400 animate-spin shrink-0" />
+                    </span>
                   )}
                   {video.twelveLabsStatus === 'failed' && (
-                    <AlertCircle className="w-3 h-3 text-red-400 shrink-0" title="AI processing failed" />
+                    <span title="AI processing failed">
+                      <AlertCircle className="w-3 h-3 text-red-400 shrink-0" />
+                    </span>
                   )}
                 </div>
                 {video.summary && (
@@ -637,6 +716,15 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline }: SidebarProps)
           createdAt={propertiesModal.createdAt}
         />
       )}
+
+      {/* Upload Progress Modal */}
+      <UploadProgressModal
+        isOpen={uploadModal.isOpen}
+        onClose={() => setUploadModal((prev) => ({ ...prev, isOpen: false }))}
+        stage={uploadModal.stage}
+        fileName={uploadModal.fileName}
+        errorMessage={uploadModal.errorMessage}
+      />
     </div>
   );
 }

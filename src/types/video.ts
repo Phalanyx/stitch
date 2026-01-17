@@ -17,6 +17,7 @@ export interface VideoMetadata {
   fileSize: number | null;
   createdAt: Date;
   twelveLabsId: string | null;
+  twelveLabsTaskId: string | null;
   twelveLabsStatus: string | null;
   summary: string | null;
 }

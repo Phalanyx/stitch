@@ -133,6 +133,68 @@ export async function uploadVideoToTwelveLabs(
 }
 
 /**
+ * Create a Twelve Labs indexing task and return immediately (no waiting)
+ * Returns the task ID for polling later
+ */
+export async function createTwelveLabsTask(
+  videoUrl: string,
+  fileName: string
+): Promise<{ taskId: string }> {
+  console.log(`[Twelve Labs] Starting async upload for: ${fileName}`);
+  console.log(`[Twelve Labs] Video URL: ${videoUrl}`);
+
+  const tempFilePath = path.join('/tmp', fileName);
+
+  // Download the video file from the URL (localhost bucket)
+  await downloadFile(videoUrl, tempFilePath);
+
+  const fileSize = fs.statSync(tempFilePath).size;
+  console.log(`[Twelve Labs] Download complete, file size: ${fileSize} bytes (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+
+  try {
+    console.log(`[Twelve Labs] Creating indexing task...`);
+
+    // Create a task to index the video from file
+    const task = await client.tasks.create({
+      indexId: INDEX_ID,
+      videoFile: fs.createReadStream(tempFilePath),
+    });
+
+    if (!task.id) {
+      throw new Error('Failed to create Twelve Labs task');
+    }
+
+    console.log(`[Twelve Labs] Task created: ${task.id}, returning immediately (async mode)`);
+
+    return {
+      taskId: task.id,
+    };
+  } finally {
+    // Clean up the temporary file
+    if (fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+      console.log(`[Twelve Labs] Cleaned up temporary file: ${tempFilePath}`);
+    }
+  }
+}
+
+/**
+ * Get the status of a Twelve Labs indexing task
+ * Returns status, and videoId when complete
+ */
+export async function getTaskStatus(taskId: string): Promise<{
+  status: string;
+  videoId?: string;
+}> {
+  const task = await client.tasks.retrieve(taskId);
+
+  return {
+    status: task.status || 'unknown',
+    videoId: task.videoId || undefined,
+  };
+}
+
+/**
  * Generate a summary for a video using Pegasus
  */
 export async function generateVideoSummary(videoId: string): Promise<string> {

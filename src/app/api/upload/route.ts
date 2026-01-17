@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { prisma } from '@/lib/prisma';
 import { v4 as uuid } from 'uuid';
-import { uploadVideoToTwelveLabs, generateVideoSummary } from '@/lib/twelvelabs';
+import { createTwelveLabsTask } from '@/lib/twelvelabs';
 
 export async function POST(request: NextRequest) {
   // Get the access token from the Authorization header
@@ -43,46 +43,31 @@ export async function POST(request: NextRequest) {
     .from('raw-videos')
     .getPublicUrl(filePath);
 
-  // Step 2: Upload to Twelve Labs and wait for indexing
-  let twelveLabsId: string | null = null;
+  // Step 2: Create Twelve Labs task (async - returns immediately)
+  let twelveLabsTaskId: string | null = null;
   let twelveLabsStatus: string = 'pending';
-  let summary: string | null = null;
 
   try {
-    const result = await uploadVideoToTwelveLabs(publicUrl, file.name);
-    twelveLabsId = result.videoId;
-    twelveLabsStatus = 'ready';
-
-    // Step 3: Generate summary using Pegasus
-    try {
-      summary = await generateVideoSummary(result.videoId);
-    } catch (summaryError) {
-      console.error('Failed to generate summary:', summaryError);
-      // Continue without summary - not critical
-    }
+    const result = await createTwelveLabsTask(publicUrl, file.name);
+    twelveLabsTaskId = result.taskId;
+    twelveLabsStatus = 'indexing';
   } catch (twelveLabsError) {
-    console.error('Twelve Labs upload failed:', twelveLabsError);
+    console.error('Twelve Labs task creation failed:', twelveLabsError);
     twelveLabsStatus = 'failed';
     // Continue without Twelve Labs - video is still usable from Supabase
   }
 
-  // Step 4: Save metadata to database via Prisma
+  // Step 3: Save metadata to database via Prisma
   const video = await prisma.video.create({
     data: {
       id: videoId,
       userId: user.id,
       url: publicUrl,
       fileName: file.name,
-      twelveLabsId,
+      twelveLabsTaskId,
       twelveLabsStatus,
-      summary,
     },
   });
 
-  return NextResponse.json({
-    video: {
-      ...video,
-      fileSize: video.fileSize ? Number(video.fileSize) : null,
-    },
-  });
+  return NextResponse.json({ video });
 }
