@@ -1,6 +1,5 @@
 # Tasks
 
-- Add a scrubber/progress tick bar to the preview player that shows the current playback time and allows seeking.
-- Ensure the scrubber updates as the video plays and stays in sync when changing clips.
-- Adjust the layout so the play button is not covered by the timeline (fix stacking/spacing/positioning).
-- Verify on desktop and mobile that the timeline no longer overlaps the play controls.
+- Define project-specific user behavioral states for the editor (e.g., uploading, building timeline, trimming, previewing, exporting), and the event/property schema that captures them.
+- Implement tracking that records those behavioral states and key transitions as a linear sequence suitable for agent ingestion.
+- Specify how the agent consumes the linearized state to deliver actions/insights beyond a simple rules engine.
