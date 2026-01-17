@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { runChatOrchestrator } from '@/lib/agents/client/chatOrchestrator';
 import { JsonValue } from '@/lib/agents/behaviorAgent/types';
 import { VideoReference } from '@/types/video';
+import { AudioMetadata } from '@/types/audio';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -22,6 +23,8 @@ export function useChatAgent(clips: VideoReference[], audioClips: VideoReference
   const metadataCacheRef = useRef(new Map<string, JsonValue>());
   clipsRef.current = clips;
   audioRef.current = audioClips;
+  const onAudioCreatedRef = useRef(onAudioCreated);
+  onAudioCreatedRef.current = onAudioCreated;
 
   const knownClipIds = useMemo(
     () => clips.map((clip) => clip.videoId ?? clip.id),

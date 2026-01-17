@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { X, Music } from 'lucide-react';
 import { AudioReference } from '@/types/audio';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
@@ -10,27 +10,51 @@ const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) *
 
 interface AudioTimelineClipProps {
   clip: AudioReference;
+  layerId: string;
   pixelsPerSecond: number;
-  onUpdateTimestamp: (id: string, newTime: number) => void;
-  onUpdateTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
-  onRemove: (id: string) => void;
+  onUpdateTimestamp: (id: string, newTime: number, layerId: string) => void;
+  onUpdateTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId: string) => void;
+  onRemove: (id: string, layerId: string) => void;
+  isSelected?: boolean;
+  onSelect?: (id: string) => void;
 }
 
 export function AudioTimelineClip({
   clip,
+  layerId,
   pixelsPerSecond,
   onUpdateTimestamp,
   onUpdateTrim,
   onRemove,
+  isSelected,
+  onSelect,
 }: AudioTimelineClipProps) {
   const clipRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isPositionInvalid, setIsPositionInvalid] = useState(false);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const dragStartX = useRef(0);
   const initialTimestamp = useRef(0);
 
   const isPositionValid = useAudioTimelineStore((state) => state.isPositionValid);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    if (!showContextMenu) return;
+    const handleClick = () => setShowContextMenu(false);
+    window.addEventListener('click', handleClick);
+    return () => window.removeEventListener('click', handleClick);
+  }, [showContextMenu]);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenuPos({ x: e.clientX, y: e.clientY });
+    setShowContextMenu(true);
+    onSelect?.(clip.id);
+  };
 
   // Calculate visible duration after trimming
   const trimStart = clip.trimStart ?? 0;
@@ -48,11 +72,11 @@ export function AudioTimelineClip({
       const deltaTime = deltaX / pixelsPerSecond;
       const newTimestamp = snapToGrid(initialTimestamp.current + deltaTime);
 
-      // Check if the position would be valid
-      const valid = isPositionValid(clip.id, newTimestamp, clip.duration, clip.trimStart, clip.trimEnd);
+      // Check if the position would be valid within this layer
+      const valid = isPositionValid(clip.id, newTimestamp, clip.duration, clip.trimStart, clip.trimEnd, layerId);
       setIsPositionInvalid(!valid);
 
-      onUpdateTimestamp(clip.id, newTimestamp);
+      onUpdateTimestamp(clip.id, newTimestamp, layerId);
     };
 
     const handleMouseUp = () => {
@@ -85,7 +109,7 @@ export function AudioTimelineClip({
 
       const newTimestamp = startTimestamp + (clampedTrimStart - startTrimStart);
 
-      onUpdateTrim(clip.id, { trimStart: clampedTrimStart, timestamp: snapToGrid(newTimestamp) });
+      onUpdateTrim(clip.id, { trimStart: clampedTrimStart, timestamp: snapToGrid(newTimestamp) }, layerId);
     };
 
     const handleMouseUp = () => {
@@ -114,7 +138,7 @@ export function AudioTimelineClip({
       const maxTrim = clip.duration - (clip.trimStart ?? 0) - 0.1; // Keep min 0.1s visible
       const clampedTrimEnd = snapToGrid(Math.min(newTrimEnd, maxTrim));
 
-      onUpdateTrim(clip.id, { trimEnd: clampedTrimEnd });
+      onUpdateTrim(clip.id, { trimEnd: clampedTrimEnd }, layerId);
     };
 
     const handleMouseUp = () => {
@@ -136,9 +160,16 @@ export function AudioTimelineClip({
       className={`absolute top-2 h-12 rounded-md flex items-center ${
         isPositionInvalid
           ? 'bg-red-500 ring-2 ring-red-300'
+          : isSelected
+          ? 'bg-green-600 ring-2 ring-white'
           : 'bg-green-600'
       } ${isDragging ? 'cursor-grabbing opacity-80' : ''} ${isResizing ? 'opacity-90' : ''}`}
       style={{ left: `${left}px`, width: `${width}px`, minWidth: '20px' }}
+      onContextMenu={handleContextMenu}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect?.(clip.id);
+      }}
     >
       {/* Left resize handle */}
       <div
@@ -160,7 +191,7 @@ export function AudioTimelineClip({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onRemove(clip.id);
+            onRemove(clip.id, layerId);
           }}
           className="text-white/70 hover:text-white ml-1 flex-shrink-0"
         >
@@ -173,6 +204,25 @@ export function AudioTimelineClip({
         className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-green-700 hover:bg-green-500 rounded-r-md"
         onMouseDown={handleRightResize}
       />
+
+      {/* Context menu */}
+      {showContextMenu && (
+        <div
+          className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg py-1 z-50"
+          style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700"
+            onClick={() => {
+              onRemove(clip.id, layerId);
+              setShowContextMenu(false);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }

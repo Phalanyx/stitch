@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect, RefObject } from 'react';
+import { useState, useRef, useEffect, RefObject, useMemo } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { VideoReference } from '@/types/video';
-import { AudioReference } from '@/types/audio';
+import { AudioLayer } from '@/types/audio';
 
 interface PreviewProps {
   clips: VideoReference[];
-  audioClips: AudioReference[];
+  audioLayers: AudioLayer[];
   videoRef: RefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
@@ -18,7 +18,7 @@ interface PreviewProps {
   isSeekingRef: RefObject<boolean>;
 }
 
-export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onSeek, onDropVideo, isSeekingRef }: PreviewProps) {
+export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onSeek, onDropVideo, isSeekingRef }: PreviewProps) {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const prevActiveClipIdRef = useRef<string | null>(null);
@@ -28,6 +28,13 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
   const reverseGlobalTimeRef = useRef<number>(0);
 
   const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
+
+  // Flatten unmuted audio layers into a single array for playback
+  const audioClips = useMemo(() => {
+    return audioLayers
+      .filter(layer => !layer.muted)
+      .flatMap(layer => layer.clips);
+  }, [audioLayers]);
 
   // Create/update audio elements for each audio clip
   useEffect(() => {
@@ -121,43 +128,83 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
   // Note: currentTime is intentionally NOT in dependencies - we only want this to run
   // when the active clip ID changes, not every frame. The closure captures currentTime
   // at the moment of clip change, which is the correct behavior.
+  // Uses 'canplay' event instead of 'loadedmetadata' for more reliable playback start.
   useEffect(() => {
     if (!activeClip || !videoRef.current) {
       prevActiveClipIdRef.current = null;
       return;
     }
 
-    if (prevActiveClipIdRef.current !== activeClip.id) {
-      console.log('[Clip] Active clip changed:', {
-        from: prevActiveClipIdRef.current?.slice(0, 8),
-        to: activeClip.id.slice(0, 8),
-        currentTime,
-        clipTimestamp: activeClip.timestamp
-      });
-      
-      // Stop reverse playback when clip changes
-      stopReversePlayback();
-      
-      prevActiveClipIdRef.current = activeClip.id;
-
-      const handleLoadedMetadata = () => {
-        if (!videoRef.current) return;
-        const trimStart = activeClip.trimStart || 0;
-        const timeWithinClip = currentTime - activeClip.timestamp;
-        const videoTime = trimStart + timeWithinClip;
-        const maxVideoTime = activeClip.duration - (activeClip.trimEnd || 0);
-        videoRef.current.currentTime = Math.max(trimStart, Math.min(videoTime, maxVideoTime));
-        // Reset playback rate to forward when clip changes
-        videoRef.current.playbackRate = 1;
-        if (isPlaying) videoRef.current.play().catch(() => {});
-      };
-
-      if (videoRef.current.readyState >= 1) {
-        handleLoadedMetadata();
-      } else {
-        videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
-      }
+    if (prevActiveClipIdRef.current === activeClip.id) {
+      return;
     }
+
+    console.log('[Clip] Active clip changed:', {
+      from: prevActiveClipIdRef.current?.slice(0, 8),
+      to: activeClip.id.slice(0, 8),
+      currentTime,
+      clipTimestamp: activeClip.timestamp,
+      isPlaying
+    });
+    prevActiveClipIdRef.current = activeClip.id;
+
+    const trimStart = activeClip.trimStart || 0;
+    const timeWithinClip = currentTime - activeClip.timestamp;
+    const videoTime = trimStart + timeWithinClip;
+    const maxVideoTime = activeClip.duration - (activeClip.trimEnd || 0);
+    const targetTime = Math.max(trimStart, Math.min(videoTime, maxVideoTime));
+
+    // Capture the current video element for cleanup
+    const video = videoRef.current;
+
+    const setTimeAndPlay = () => {
+      if (!videoRef.current) {
+        console.log('[Clip] setTimeAndPlay: videoRef is null');
+        return;
+      }
+      // Verify we're still working with the expected clip (guard against stale closures)
+      if (prevActiveClipIdRef.current !== activeClip.id) {
+        console.log('[Clip] Stale setTimeAndPlay call, skipping');
+        return;
+      }
+      console.log('[Clip] setTimeAndPlay called:', {
+        readyState: videoRef.current.readyState,
+        isPlaying,
+        targetTime: targetTime.toFixed(3),
+        clipId: activeClip.id.slice(0, 8)
+      });
+      videoRef.current.currentTime = targetTime;
+
+      // Only stop reverse playback if we're not currently reversing
+      // (clip change during reverse should continue reverse)
+      if (!isPlayingReverseRef.current) {
+        stopReversePlayback();
+      }
+
+      if (isPlaying) {
+        if (isPlayingReverseRef.current) {
+          // Reverse playback is handling clip transitions - don't interfere
+          return;
+        }
+        videoRef.current.play()
+          .then(() => console.log('[Clip] play() succeeded'))
+          .catch((e) => console.log('[Clip] play() error:', e));
+      }
+    };
+
+    // If video is ready, set time immediately; otherwise wait for canplay
+    console.log('[Clip] Checking video readyState:', video.readyState);
+    if (video.readyState >= 1) {
+      setTimeAndPlay();
+    } else {
+      console.log('[Clip] Adding canplay listener');
+      video.addEventListener('canplay', setTimeAndPlay, { once: true });
+    }
+
+    // Cleanup: remove event listener if effect re-runs before canplay fires
+    return () => {
+      video.removeEventListener('canplay', setTimeAndPlay);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeClip?.id, isPlaying]);
 
@@ -293,7 +340,6 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
       const trimStart = currentActiveClip.trimStart || 0;
       const trimEnd = currentActiveClip.trimEnd || 0;
       const clipStart = currentActiveClip.timestamp;
-      const visibleDuration = currentActiveClip.duration - trimStart - trimEnd;
       
       // Check if we've reached the start of current clip
       if (newGlobalTime <= clipStart + 0.01) {
@@ -385,6 +431,9 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
       return;
     }
 
+    // Note: URL comparison removed - browser normalizes src to absolute URL which
+    // doesn't match relative/blob URLs. We rely on isTransitioningRef instead.
+
     isTransitioningRef.current = true;
     const currentIndex = sortedClips.findIndex(c => c.id === activeClip?.id);
 
@@ -398,9 +447,7 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
       const nextClip = sortedClips[currentIndex + 1];
       console.log('[Clip] onEnded: transitioning to next clip:', nextClip.id.slice(0, 8));
       onSeek(nextClip.timestamp);
-      if (videoRef.current) {
-        videoRef.current.play();
-      }
+      // Don't call play() here - the useEffect will handle it after canplay
     } else {
       console.log('[Clip] onEnded: end of timeline, resetting');
       setIsPlaying(false);
@@ -426,6 +473,15 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
       console.log('[Clip] Skipping timeupdate during transition');
       return;
     }
+
+    // Skip if video is not ready (readyState < 2 means HAVE_CURRENT_DATA not reached)
+    if (videoRef.current.readyState < 2) {
+      console.log('[Clip] Skipping timeupdate, video not ready:', videoRef.current.readyState);
+      return;
+    }
+
+    // Note: URL comparison removed - browser normalizes src to absolute URL which
+    // doesn't match relative/blob URLs. We rely on isTransitioningRef and isSeekingRef instead.
 
     // Skip if playing in reverse (reverse playback handles its own updates)
     if (isPlayingReverseRef.current) {
@@ -466,12 +522,10 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
           nextTimestamp: nextClip.timestamp
         });
         onSeek(nextClip.timestamp);
-        if (isPlaying && videoRef.current) {
-          videoRef.current.play();
-        }
+        // Don't call play() here - the useEffect will handle it after canplay
       } else {
         console.log('[Clip] End of timeline, resetting to 0');
-        setIsPlaying(false);
+        // Note: pause() will trigger onPause which calls setIsPlaying(false)
         videoRef.current?.pause();
         onSeek(0);
       }
@@ -533,14 +587,12 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
             muted
             onEnded={handleVideoEnded}
             onPlay={() => {
-              // Only update if not in reverse mode (reverse mode manages its own state)
               if (!isPlayingReverseRef.current) {
                 setIsPlaying(true);
               }
             }}
             onPause={() => {
-              // Only update if not in reverse mode (reverse mode manages its own state)
-              if (!isPlayingReverseRef.current) {
+              if (!isPlayingReverseRef.current && !isTransitioningRef.current) {
                 setIsPlaying(false);
               }
             }}

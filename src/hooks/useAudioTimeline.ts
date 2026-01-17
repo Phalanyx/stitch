@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
-import { AudioReference } from '@/types/audio';
+import { AudioReference, AudioLayer } from '@/types/audio';
 
 export function useAudioTimeline() {
-  const { audioClips, setAudioClips, addAudioToTimeline, updateAudioTimestamp, removeAudioClip } = useAudioTimelineStore();
+  const { audioLayers, setAudioClips, addAudioToTimeline, updateAudioTimestamp, removeAudioClip } = useAudioTimelineStore();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -12,7 +12,7 @@ export function useAudioTimeline() {
         const response = await fetch('/api/session');
         if (response.ok) {
           const data = await response.json();
-          const audioData = data.session_audio as AudioReference[];
+          const audioData = data.session_audio as AudioReference[] | AudioLayer[];
           setAudioClips(audioData ?? []);
         }
       } catch (error) {
@@ -26,7 +26,7 @@ export function useAudioTimeline() {
   }, [setAudioClips]);
 
   return {
-    audioClips,
+    audioLayers,
     isLoading,
     addAudioToTimeline,
     updateAudioTimestamp,
