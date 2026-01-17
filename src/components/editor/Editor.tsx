@@ -237,13 +237,16 @@ export function Editor() {
       return;
     }
 
+    // Derive audioClips from audioLayers
+    const audioClips = audioLayers.flatMap(layer => layer.clips);
+
     try {
       await exportToFile(clips, audioClips);
     } catch (err) {
       console.error('Export failed:', err);
       // Error is already handled by the hook and shown in the modal
     }
-  }, [clips, audioClips, exportToFile]);
+  }, [clips, audioLayers, exportToFile]);
 
   const handleCloseExportModal = useCallback(() => {
     reset();
