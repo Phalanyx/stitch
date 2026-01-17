@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Preview } from './Preview';
+import { ChatAgent } from './ChatAgent';
 import { Timeline } from './Timeline';
 import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
@@ -64,6 +65,44 @@ export function Editor() {
 
   // Enable auto-save
   useAutoSave();
+
+  const lastSentCount = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (lastSentCount.current === clips.length) return;
+    lastSentCount.current = clips.length;
+
+    const now = Date.now();
+    // Behavioral agent test only; not used for production outputs.
+    const events = [
+      { type: 'editor_opened', ts: now - 1000 },
+      ...clips.map((clip, index) => ({
+        type: 'clip_added',
+        ts: now - 900 + index * 50,
+        props: { id: clip.id },
+      })),
+    ];
+
+    fetch('/api/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || `Request failed: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data) => {
+        console.log('Agent output', data);
+      })
+      .catch((error) => {
+        console.error('Agent test failed', error);
+      });
+  }, [clips, isLoading]);
 
   // Playback state lifted from Preview
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -177,6 +216,7 @@ export function Editor() {
           onDropVideo={handleAddVideoWithAudio}
           isSeekingRef={isSeekingRef}
         />
+        <ChatAgent clips={clips} audioClips={audioClips} />
       </div>
       <Timeline
         clips={clips}
