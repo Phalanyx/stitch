@@ -23,6 +23,11 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const prevActiveClipIdRef = useRef<string | null>(null);
   const isTransitioningRef = useRef(false);
+  const pendingTransitionRef = useRef<{
+    clipId: string;
+    targetTime: number;
+    shouldPlay: boolean;
+  } | null>(null);
 
   const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -117,31 +122,30 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
       return;
     }
 
-    if (prevActiveClipIdRef.current !== activeClip.id) {
-      console.log('[Clip] Active clip changed:', {
-        from: prevActiveClipIdRef.current?.slice(0, 8),
-        to: activeClip.id.slice(0, 8),
-        currentTime,
-        clipTimestamp: activeClip.timestamp
-      });
-      prevActiveClipIdRef.current = activeClip.id;
-
-      const handleLoadedMetadata = () => {
-        if (!videoRef.current) return;
-        const trimStart = activeClip.trimStart || 0;
-        const timeWithinClip = currentTime - activeClip.timestamp;
-        const videoTime = trimStart + timeWithinClip;
-        const maxVideoTime = activeClip.duration - (activeClip.trimEnd || 0);
-        videoRef.current.currentTime = Math.max(trimStart, Math.min(videoTime, maxVideoTime));
-        if (isPlaying) videoRef.current.play().catch(() => {});
-      };
-
-      if (videoRef.current.readyState >= 1) {
-        handleLoadedMetadata();
-      } else {
-        videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
-      }
+    if (prevActiveClipIdRef.current === activeClip.id) {
+      return;
     }
+
+    console.log('[Clip] Active clip changed:', {
+      from: prevActiveClipIdRef.current?.slice(0, 8),
+      to: activeClip.id.slice(0, 8),
+      currentTime,
+      clipTimestamp: activeClip.timestamp,
+      isPlaying
+    });
+    prevActiveClipIdRef.current = activeClip.id;
+
+    // Set pending transition - will be handled by onCanPlay
+    const trimStart = activeClip.trimStart || 0;
+    const timeWithinClip = currentTime - activeClip.timestamp;
+    const videoTime = trimStart + timeWithinClip;
+    const maxVideoTime = activeClip.duration - (activeClip.trimEnd || 0);
+
+    pendingTransitionRef.current = {
+      clipId: activeClip.id,
+      targetTime: Math.max(trimStart, Math.min(videoTime, maxVideoTime)),
+      shouldPlay: isPlaying
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeClip?.id, isPlaying]);
 
@@ -178,9 +182,7 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
       const nextClip = sortedClips[currentIndex + 1];
       console.log('[Clip] onEnded: transitioning to next clip:', nextClip.id.slice(0, 8));
       onSeek(nextClip.timestamp);
-      if (videoRef.current) {
-        videoRef.current.play();
-      }
+      // Don't call play() here - the useEffect will handle it after loadedmetadata
     } else {
       console.log('[Clip] onEnded: end of timeline, resetting');
       setIsPlaying(false);
@@ -239,9 +241,7 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
           nextTimestamp: nextClip.timestamp
         });
         onSeek(nextClip.timestamp);
-        if (isPlaying && videoRef.current) {
-          videoRef.current.play();
-        }
+        // Don't call play() here - the useEffect will handle it after loadedmetadata
       } else {
         console.log('[Clip] End of timeline, resetting to 0');
         setIsPlaying(false);
@@ -258,6 +258,24 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
     }
 
     onTimeUpdate(globalTime);
+  };
+
+  const handleCanPlay = () => {
+    if (!videoRef.current || !pendingTransitionRef.current) return;
+
+    const pending = pendingTransitionRef.current;
+    // Only handle if this is for the current clip
+    if (pending.clipId !== activeClip?.id) return;
+
+    console.log('[Clip] canplay fired, handling pending transition');
+    videoRef.current.currentTime = pending.targetTime;
+
+    if (pending.shouldPlay) {
+      console.log('[Clip] Calling play() after canplay');
+      videoRef.current.play().catch((e) => console.log('[Clip] play() error:', e));
+    }
+
+    pendingTransitionRef.current = null;
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -308,6 +326,7 @@ export function Preview({ clips, audioClips, videoRef, isPlaying, setIsPlaying, 
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
             onTimeUpdate={handleTimeUpdate}
+            onCanPlay={handleCanPlay}
           />
         ) : clips.length > 0 ? null : (
           <div className="text-gray-500">No clips in timeline</div>
