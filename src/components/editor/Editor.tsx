@@ -6,7 +6,9 @@ import { Preview } from './Preview';
 import { Timeline } from './Timeline';
 import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
-import { Loader2 } from 'lucide-react';
+import { useVideoExport } from '@/hooks/useVideoExport';
+import { ExportProgressModal } from '@/components/ui/ExportProgressModal';
+import { Loader2, Download } from 'lucide-react';
 
 // Helper to extract video duration from URL
 const getVideoDuration = (url: string): Promise<number> => {
@@ -64,6 +66,9 @@ export function Editor() {
 
   // Enable auto-save
   useAutoSave();
+
+  // Video export
+  const { exportToFile, isExporting, progress, error, reset } = useVideoExport();
 
   // Playback state lifted from Preview
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -153,6 +158,24 @@ export function Editor() {
     addAudioAtTimestamp({ ...audio, duration }, audio.timestamp);
   }, [addAudioAtTimestamp]);
 
+  const handleExport = useCallback(async () => {
+    if (clips.length === 0) {
+      alert('No clips to export. Please add at least one video clip to the timeline.');
+      return;
+    }
+
+    try {
+      await exportToFile(clips, audioClips);
+    } catch (err) {
+      console.error('Export failed:', err);
+      // Error is already handled by the hook and shown in the modal
+    }
+  }, [clips, audioClips, exportToFile]);
+
+  const handleCloseExportModal = useCallback(() => {
+    reset();
+  }, [reset]);
+
   if (isLoading) {
     return (
       <div className="h-screen bg-gray-900 flex items-center justify-center">
@@ -163,6 +186,19 @@ export function Editor() {
 
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
+      {/* Export Button */}
+      <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 px-4 py-2 flex justify-end">
+        <button
+          onClick={handleExport}
+          disabled={isExporting || clips.length === 0}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+          title={clips.length === 0 ? 'Add clips to timeline to export' : 'Export video'}
+        >
+          <Download className="w-4 h-4" />
+          <span>{isExporting ? 'Exporting...' : 'Export Video'}</span>
+        </button>
+      </div>
+
       <div className="flex-1 flex overflow-hidden">
         <Sidebar onAddToTimeline={handleAddVideoWithAudio} onAddAudioToTimeline={addAudioToTimeline} />
         <Preview
@@ -191,6 +227,13 @@ export function Editor() {
         onDropAudio={handleDropAudio}
         currentTime={currentTime}
         onSeek={handleSeek}
+      />
+
+      {/* Export Progress Modal */}
+      <ExportProgressModal
+        progress={progress}
+        isOpen={isExporting || (progress !== null && (progress.stage === 'complete' || progress.stage === 'error'))}
+        onClose={handleCloseExportModal}
       />
     </div>
   );
