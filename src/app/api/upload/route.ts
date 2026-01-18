@@ -67,9 +67,13 @@ export async function POST(request: NextRequest) {
 
   // Step 3: Extract audio from video (non-blocking - failure doesn't stop upload)
   let audioId: string | null = null;
+  let videoDuration: number | null = null;
 
   try {
     const audioResult = await extractAudioFromVideo(buffer, videoId, baseName);
+
+    // Store the duration for the video record (same as audio duration)
+    videoDuration = audioResult.duration || null;
 
     // Upload audio to raw-audio bucket
     const audioFileName = `${baseName}_audio.mp3`;
@@ -115,6 +119,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       url: publicUrl,
       fileName: displayName,
+      duration: videoDuration,
       twelveLabsTaskId,
       twelveLabsStatus,
       audioId,
