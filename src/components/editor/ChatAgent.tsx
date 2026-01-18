@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Send } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Send, X } from 'lucide-react';
 import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { useChatAgent } from '@/hooks/useChatAgent';
@@ -11,6 +11,10 @@ interface ChatAgentProps {
   audioClips: VideoReference[];
   onAudioCreated?: (audio: AudioMetadata) => void;
   onTimelineChanged?: () => void;
+  isOpen: boolean;
+  width: number;
+  onToggle: () => void;
+  onWidthChange: (width: number) => void;
 }
 
 const LOADING_VERBS = [
@@ -57,7 +61,10 @@ function LoadingIndicator() {
   );
 }
 
-export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged }: ChatAgentProps) {
+const MIN_WIDTH = 280;
+const MAX_WIDTH = 600;
+
+export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged, isOpen, width, onToggle, onWidthChange }: ChatAgentProps) {
   const { messages, input, setInput, isSending, sendMessage } = useChatAgent(
     clips,
     audioClips,
@@ -65,15 +72,84 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
     onTimelineChanged
   );
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, isSending]);
 
+  // Handle resize drag
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    setIsResizing(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const newWidth = window.innerWidth - e.clientX;
+      const clampedWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, newWidth));
+      onWidthChange(clampedWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (isDragging.current) {
+        isDragging.current = false;
+        setIsResizing(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [onWidthChange]);
+
+  // Handle animation state for open/close
+  useEffect(() => {
+    if (!isOpen) {
+      setIsAnimating(true);
+      const timer = setTimeout(() => setIsAnimating(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  // Don't render when fully closed and animation is done
+  if (!isOpen && !isAnimating) {
+    return null;
+  }
+
   return (
-    <div className="w-72 border-l border-gray-700 bg-gray-900 flex flex-col">
-      <div className="px-3 py-2 border-b border-gray-700 text-sm text-gray-300">
-        Chat Agent
+    <div
+      className={`fixed right-0 top-[53px] bottom-0 border-l border-gray-700 bg-gray-900 flex flex-col overflow-hidden z-40 ${
+        !isResizing ? 'transition-[width] duration-300 ease-in-out' : ''
+      }`}
+      style={{ width: isOpen ? width : 0 }}
+    >
+      {/* Resize handle */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-500/50 z-10"
+        onMouseDown={handleMouseDown}
+      />
+      <div className="px-3 py-2 border-b border-gray-700 text-sm text-gray-300 flex justify-between items-center">
+        <span>Lilo Agent</span>
+        <button
+          onClick={onToggle}
+          className="p-1 hover:bg-gray-700 rounded transition-colors"
+          aria-label="Close chat"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
       <div
         ref={scrollRef}
