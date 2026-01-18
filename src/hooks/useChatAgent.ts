@@ -7,6 +7,7 @@ import { ToolCall } from '@/lib/agents/client/types';
 export type ToolOptionsData = ToolOptionsPreview;
 
 export type ChatMessage = {
+  id: string;
   role: 'user' | 'assistant' | 'tool_options';
   content: string;
   feedback?: 'like' | 'dislike';
@@ -17,6 +18,9 @@ type PendingSelection = {
   toolCall: ToolCall;
   pendingPlan: ToolCall[];
   originalMessage: string;
+  toolName: string;
+  paramName: string;
+  originalIntent: string;
 };
 
 function generateId(): string {
@@ -69,6 +73,27 @@ export function useChatAgent(
     [clips]
   );
 
+  // Track edits when user modifies a tool option variation
+  const handleEditTracked = useCallback(async (original: string, edited: string) => {
+    if (!pendingSelection) return;
+
+    try {
+      await fetch('/api/tool-edits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toolName: pendingSelection.toolName,
+          paramName: pendingSelection.paramName,
+          originalValue: original,
+          editedValue: edited,
+          userContext: pendingSelection.originalIntent,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to track tool edit:', error);
+    }
+  }, [pendingSelection]);
+
   const sendMessage = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isSending) return;
@@ -85,9 +110,8 @@ export function useChatAgent(
 
     // Filter out tool_options messages for conversation context
     const conversationMessages = nextMessages
-      .filter((m): m is { role: 'user' | 'assistant'; content: string } =>
-        m.role === 'user' || m.role === 'assistant'
-      );
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
     try {
       const result = await runChatOrchestrator({
@@ -102,10 +126,36 @@ export function useChatAgent(
         conversation: conversationMessages,
         showToolOptionsPreview,
       });
-      setMessages((current) => [
-        ...current,
-        { role: 'assistant', content: response || 'Unable to generate a response.' },
-      ]);
+
+      // Check if we got a tool options preview (paused state)
+      if (result.isPaused && result.toolOptionsPreview) {
+        setPendingSelection({
+          toolCall: result.toolOptionsPreview.pendingToolCall,
+          pendingPlan: result.toolOptionsPreview.pendingPlan,
+          originalMessage: trimmed,
+          toolName: result.toolOptionsPreview.toolName,
+          paramName: result.toolOptionsPreview.paramName,
+          originalIntent: result.toolOptionsPreview.originalIntent,
+        });
+        setMessages((current) => [
+          ...current,
+          {
+            id: generateId(),
+            role: 'tool_options',
+            content: '',
+            toolOptions: result.toolOptionsPreview,
+          },
+        ]);
+      } else {
+        setMessages((current) => [
+          ...current,
+          {
+            id: generateId(),
+            role: 'assistant',
+            content: result.response || 'Unable to generate a response.',
+          },
+        ]);
+      }
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -119,7 +169,81 @@ export function useChatAgent(
     } finally {
       setIsSending(false);
     }
-  }, [audioRef, clipsRef, input, isSending, knownClipIds, messages]);
+  }, [input, isSending, knownClipIds, messages, showToolOptionsPreview]);
+
+  // Handle when user selects a tool option
+  const selectToolOption = useCallback(async (selectedValue: string) => {
+    if (!pendingSelection || isSending) return;
+    setIsSending(true);
+
+    // Remove the tool_options message
+    setMessages((current) =>
+      current.filter((m) => m.role !== 'tool_options')
+    );
+
+    // Filter out tool_options messages for conversation context
+    const conversationMessages = messages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+    try {
+      const result = await runChatOrchestrator({
+        message: pendingSelection.originalMessage,
+        knownClipIds,
+        context: {
+          clips: clipsRef.current,
+          audioClips: audioRef.current,
+        },
+        onAudioCreated: onAudioCreatedRef.current,
+        onTimelineChanged: onTimelineChangedRef.current,
+        conversation: conversationMessages,
+        resumeWithSelection: {
+          toolCall: pendingSelection.toolCall,
+          selectedValue,
+          pendingPlan: pendingSelection.pendingPlan,
+        },
+      });
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: generateId(),
+          role: 'assistant',
+          content: result.response || 'Unable to generate a response.',
+        },
+      ]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: generateId(),
+          role: 'assistant',
+          content:
+            error instanceof Error ? error.message : 'Failed to reach chat agent.',
+        },
+      ]);
+    } finally {
+      setIsSending(false);
+      setPendingSelection(null);
+    }
+  }, [pendingSelection, isSending, knownClipIds, messages]);
+
+  // Handle canceling tool options selection
+  const cancelToolOptions = useCallback(() => {
+    setPendingSelection(null);
+    setMessages((current) =>
+      current.filter((m) => m.role !== 'tool_options')
+    );
+  }, []);
+
+  // Mark a message with feedback
+  const markMessageFeedback = useCallback((messageId: string, feedback: 'like' | 'dislike') => {
+    setMessages((current) =>
+      current.map((m) =>
+        m.id === messageId ? { ...m, feedback } : m
+      )
+    );
+  }, []);
 
   return {
     messages,
@@ -127,5 +251,10 @@ export function useChatAgent(
     setInput,
     isSending,
     sendMessage,
+    selectToolOption,
+    cancelToolOptions,
+    hasPendingSelection: pendingSelection !== null,
+    markMessageFeedback,
+    handleEditTracked,
   };
 }

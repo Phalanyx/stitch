@@ -9,6 +9,7 @@ interface ToolOptionsSelectorProps {
   onSelect: (value: string) => void;
   onCancel: () => void;
   disabled?: boolean;
+  onEditTracked?: (original: string, edited: string) => void;
 }
 
 export function ToolOptionsSelector({
@@ -16,6 +17,7 @@ export function ToolOptionsSelector({
   onSelect,
   onCancel,
   disabled = false,
+  onEditTracked,
 }: ToolOptionsSelectorProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -28,6 +30,11 @@ export function ToolOptionsSelector({
 
   const handleConfirmEdit = () => {
     if (editValue.trim()) {
+      // Track the edit if the value changed from the original
+      const originalVariation = toolOptions.variations.find(v => v.id === editingId);
+      if (originalVariation && editValue.trim() !== originalVariation.value) {
+        onEditTracked?.(originalVariation.value, editValue.trim());
+      }
       onSelect(editValue.trim());
     }
     setEditingId(null);

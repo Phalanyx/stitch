@@ -5,7 +5,20 @@ import { AgentContext, ToolCall, ToolResult } from './types';
 import { AudioMetadata } from '@/types/audio';
 import { JsonValue } from '@/lib/agents/behaviorAgent/types';
 import { runToolCall } from './toolRunner';
-import { generateVariations, ToolOptionVariation } from './generateVariations';
+import { generateVariations, ToolOptionVariation, StylisticRule } from './generateVariations';
+
+// Helper to fetch active stylistic rules for a tool
+async function fetchStylisticRules(toolName: string): Promise<StylisticRule[]> {
+  try {
+    const response = await fetch(`/api/stylistic-rules?toolName=${encodeURIComponent(toolName)}&activeOnly=true`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.rules || [];
+  } catch (error) {
+    console.error('[fetchStylisticRules] Error:', error);
+    return [];
+  }
+}
 
 type SatisfactionCheck = {
   satisfied: boolean;
@@ -152,7 +165,11 @@ export async function runChatOrchestrator(
         if (originalValue) {
           console.log('[ChatOrchestrator] Generating variations for:', nlToolCall.tool, nlInfo.paramName);
 
-          const variations = await generateVariations(nlToolCall, input.message, conversation);
+          // Fetch active stylistic rules for this tool
+          const stylisticRules = await fetchStylisticRules(nlToolCall.tool);
+          console.log('[ChatOrchestrator] Fetched stylistic rules:', stylisticRules.length);
+
+          const variations = await generateVariations(nlToolCall, input.message, conversation, stylisticRules);
 
           // Return paused state with variations
           return {
