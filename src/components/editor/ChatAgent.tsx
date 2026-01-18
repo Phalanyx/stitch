@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Send, X, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Send, X, ThumbsUp, ThumbsDown, BarChart2, Loader2 } from 'lucide-react';
 import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { useChatAgent, ChatMessage } from '@/hooks/useChatAgent';
@@ -72,6 +72,8 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
     hasPendingSelection,
     markMessageFeedback,
     handleEditTracked,
+    runFullAnalysis,
+    isRunningFullAnalysis,
   } = useChatAgent(
     clips,
     audioClips,
@@ -194,13 +196,28 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
       />
       <div className="px-3 py-2 border-b border-gray-700 text-sm text-gray-300 flex justify-between items-center">
         <span>Lilo Agent</span>
-        <button
-          onClick={onToggle}
-          className="p-1 hover:bg-gray-700 rounded transition-colors"
-          aria-label="Close chat"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={runFullAnalysis}
+            disabled={isRunningFullAnalysis}
+            className="p-1 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+            aria-label="Analyze conversation and history"
+            title="Analyze conversation and history"
+          >
+            {isRunningFullAnalysis ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <BarChart2 className="w-4 h-4" />
+            )}
+          </button>
+          <button
+            onClick={onToggle}
+            className="p-1 hover:bg-gray-700 rounded transition-colors"
+            aria-label="Close chat"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
       <div
         ref={scrollRef}

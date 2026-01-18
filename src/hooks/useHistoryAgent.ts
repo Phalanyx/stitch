@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useHistoryStore } from '@/stores/historyStore';
 import { runHistoryAnalyzer } from '@/lib/agents/historyAgent/orchestrator';
 import { HistoryAnalysis, PatternObservation } from '@/lib/agents/historyAgent/types';
@@ -12,8 +12,6 @@ export function useHistoryAgent() {
   analysisRef.current = analysis;
 
   const getSerializableHistory = useHistoryStore((state) => state.getSerializableHistory);
-  const setAnalysisTrigger = useHistoryStore((state) => state.setAnalysisTrigger);
-  const resetAnalysisCounter = useHistoryStore((state) => state.resetAnalysisCounter);
 
   const handleNotify = useCallback((observation: PatternObservation) => {
     console.log('[useHistoryAgent] Received notification:', observation.title);
@@ -33,7 +31,6 @@ export function useHistoryAgent() {
       const history = getSerializableHistory();
       const result = await runHistoryAnalyzer(history, analysisRef.current ?? undefined, handleNotify);
       setAnalysis(result);
-      resetAnalysisCounter();
       console.log('[useHistoryAgent] Analysis complete');
       return result;
     } catch (error) {
@@ -42,7 +39,7 @@ export function useHistoryAgent() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [isAnalyzing, getSerializableHistory, handleNotify, resetAnalysisCounter]);
+  }, [isAnalyzing, getSerializableHistory, handleNotify]);
 
   const clearNotifications = useCallback(() => {
     setPendingNotifications([]);
@@ -53,20 +50,6 @@ export function useHistoryAgent() {
     setPendingNotifications([]);
     return notifications;
   }, [pendingNotifications]);
-
-  // Register the analysis trigger with the history store
-  useEffect(() => {
-    const triggerAnalysis = () => {
-      console.log('[useHistoryAgent] Triggered by history store');
-      analyze();
-    };
-
-    setAnalysisTrigger(triggerAnalysis);
-
-    return () => {
-      setAnalysisTrigger(undefined);
-    };
-  }, [analyze, setAnalysisTrigger]);
 
   return {
     analysis,

@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { Command, CommandType } from '@/lib/commands/types';
 
 const MAX_HISTORY_SIZE = 100;
-const ANALYSIS_TRIGGER_THRESHOLD = 5;
 
 export type SerializedCommand = {
   id: string;
@@ -25,8 +24,6 @@ interface HistoryState {
   undoCount: number;
   redoCount: number;
   totalExecuted: number;
-  commandsSinceLastAnalysis: number;
-  onAnalysisTrigger?: () => void;
 
   execute: (command: Command) => void;
   addWithoutExecute: (command: Command) => void;
@@ -36,8 +33,6 @@ interface HistoryState {
   canRedo: () => boolean;
   clear: () => void;
   getSerializableHistory: () => SerializableHistory;
-  setAnalysisTrigger: (callback: (() => void) | undefined) => void;
-  resetAnalysisCounter: () => void;
 }
 
 export const useHistoryStore = create<HistoryState>((set, get) => ({
@@ -47,8 +42,6 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   undoCount: 0,
   redoCount: 0,
   totalExecuted: 0,
-  commandsSinceLastAnalysis: 0,
-  onAnalysisTrigger: undefined,
 
   execute: (command: Command) => {
     // Execute the command
@@ -61,20 +54,11 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
         newUndoStack.shift();
       }
 
-      const newCommandCount = state.commandsSinceLastAnalysis + 1;
-      const shouldTrigger = newCommandCount >= ANALYSIS_TRIGGER_THRESHOLD && state.onAnalysisTrigger;
-
-      if (shouldTrigger) {
-        // Schedule the trigger callback outside of the state update
-        setTimeout(() => state.onAnalysisTrigger?.(), 0);
-      }
-
       return {
         undoStack: newUndoStack,
         // Clear redo stack when new command is executed
         redoStack: [],
         totalExecuted: state.totalExecuted + 1,
-        commandsSinceLastAnalysis: shouldTrigger ? 0 : newCommandCount,
       };
     });
   },
@@ -87,18 +71,10 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
         newUndoStack.shift();
       }
 
-      const newCommandCount = state.commandsSinceLastAnalysis + 1;
-      const shouldTrigger = newCommandCount >= ANALYSIS_TRIGGER_THRESHOLD && state.onAnalysisTrigger;
-
-      if (shouldTrigger) {
-        setTimeout(() => state.onAnalysisTrigger?.(), 0);
-      }
-
       return {
         undoStack: newUndoStack,
         redoStack: [],
         totalExecuted: state.totalExecuted + 1,
-        commandsSinceLastAnalysis: shouldTrigger ? 0 : newCommandCount,
       };
     });
   },
@@ -164,7 +140,6 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
       undoCount: 0,
       redoCount: 0,
       totalExecuted: 0,
-      commandsSinceLastAnalysis: 0,
     });
   },
 
@@ -183,13 +158,5 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
       redoCount: state.redoCount,
       totalExecuted: state.totalExecuted,
     };
-  },
-
-  setAnalysisTrigger: (callback: (() => void) | undefined) => {
-    set({ onAnalysisTrigger: callback });
-  },
-
-  resetAnalysisCounter: () => {
-    set({ commandsSinceLastAnalysis: 0 });
   },
 }));

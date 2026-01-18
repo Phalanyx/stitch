@@ -49,6 +49,7 @@ export function useChatAgent(
   const [isSending, setIsSending] = useState(false);
   const [showToolOptionsPreview, setShowToolOptionsPreview] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
+  const [isRunningFullAnalysis, setIsRunningFullAnalysis] = useState(false);
 
   const {
     analysis: historyAnalysis,
@@ -187,17 +188,6 @@ export function useChatAgent(
             content: assistantContent,
           },
         ]);
-
-        // Trigger background preference analysis (fire-and-forget)
-        const fullConversation = [
-          ...conversationMessages,
-          { role: 'assistant' as const, content: assistantContent },
-        ];
-        fetch('/api/preferences/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversation: fullConversation }),
-        }).catch((err) => console.error('Preference analysis failed:', err));
       }
     } catch (error) {
       setMessages((current) => [
@@ -280,17 +270,6 @@ export function useChatAgent(
           content: assistantContent,
         },
       ]);
-
-      // Trigger background preference analysis (fire-and-forget)
-      const fullConversation = [
-        ...conversationMessages,
-        { role: 'assistant' as const, content: assistantContent },
-      ];
-      fetch('/api/preferences/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversation: fullConversation }),
-      }).catch((err) => console.error('Preference analysis failed:', err));
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -325,6 +304,31 @@ export function useChatAgent(
     );
   }, []);
 
+  const runFullAnalysis = useCallback(async () => {
+    if (isRunningFullAnalysis || isAnalyzingHistory) return;
+
+    setIsRunningFullAnalysis(true);
+
+    try {
+      // Build conversation for preference analysis
+      const conversationMessages = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+      // Run both analyses in parallel
+      await Promise.all([
+        analyzeHistory(),
+        fetch('/api/preferences/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversation: conversationMessages }),
+        }).catch((err) => console.error('Preference analysis failed:', err)),
+      ]);
+    } finally {
+      setIsRunningFullAnalysis(false);
+    }
+  }, [isRunningFullAnalysis, isAnalyzingHistory, messages, analyzeHistory]);
+
   return {
     messages,
     input,
@@ -339,5 +343,7 @@ export function useChatAgent(
     isAnalyzingHistory,
     analyzeHistory,
     handleEditTracked,
+    runFullAnalysis,
+    isRunningFullAnalysis,
   };
 }

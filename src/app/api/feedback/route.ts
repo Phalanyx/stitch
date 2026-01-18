@@ -39,25 +39,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Trigger preference analysis in the background
-    const baseUrl = request.nextUrl.origin;
-    fetch(`${baseUrl}/api/preferences/analyze`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cookie': request.headers.get('cookie') || '',
-      },
-      body: JSON.stringify({
-        feedback: {
-          type: feedbackType,
-          messageContent,
-          feedbackText,
-        },
-      }),
-    }).catch((error) => {
-      console.error('Error triggering preference analysis:', error);
-    });
-
     return NextResponse.json({
       success: true,
       feedbackId: feedback.id,
