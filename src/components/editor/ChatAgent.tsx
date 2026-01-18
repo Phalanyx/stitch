@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Send, X } from 'lucide-react';
+import { Send, X, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
-import { useChatAgent } from '@/hooks/useChatAgent';
+import { useChatAgent, ChatMessage } from '@/hooks/useChatAgent';
+import { FeedbackModal } from '@/components/ui/FeedbackModal';
 
 interface ChatAgentProps {
   clips: VideoReference[];
@@ -52,8 +53,14 @@ function LoadingIndicator() {
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 600;
 
+type FeedbackModalState = {
+  isOpen: boolean;
+  feedbackType: 'like' | 'dislike';
+  message: ChatMessage | null;
+};
+
 export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged, isOpen, width, onToggle, onWidthChange }: ChatAgentProps) {
-  const { messages, input, setInput, isSending, sendMessage } = useChatAgent(
+  const { messages, input, setInput, isSending, sendMessage, markMessageFeedback } = useChatAgent(
     clips,
     audioClips,
     onAudioCreated,
@@ -63,6 +70,50 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
   const isDragging = useRef(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [feedbackModal, setFeedbackModal] = useState<FeedbackModalState>({
+    isOpen: false,
+    feedbackType: 'like',
+    message: null,
+  });
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
+  const handleFeedbackClick = useCallback((message: ChatMessage, feedbackType: 'like' | 'dislike') => {
+    setFeedbackModal({
+      isOpen: true,
+      feedbackType,
+      message,
+    });
+  }, []);
+
+  const handleFeedbackClose = useCallback(() => {
+    setFeedbackModal((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  const handleFeedbackSubmit = useCallback(async (feedbackText?: string) => {
+    if (!feedbackModal.message) return;
+
+    setIsSubmittingFeedback(true);
+    try {
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          feedbackType: feedbackModal.feedbackType,
+          messageContent: feedbackModal.message.content,
+          feedbackText,
+        }),
+      });
+
+      if (response.ok) {
+        markMessageFeedback(feedbackModal.message.id, feedbackModal.feedbackType);
+      }
+    } catch (error) {
+      console.error('Failed to submit feedback:', error);
+    } finally {
+      setIsSubmittingFeedback(false);
+      handleFeedbackClose();
+    }
+  }, [feedbackModal, markMessageFeedback, handleFeedbackClose]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -143,15 +194,15 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
         ref={scrollRef}
         className="flex-1 overflow-y-auto px-3 py-2 space-y-2 text-sm"
       >
-        {messages.map((message, index) =>
+        {messages.map((message) =>
           message.role === 'user' ? (
-            <div key={`${message.role}-${index}`} className="flex justify-end">
+            <div key={message.id} className="flex justify-end">
               <div className="bg-sky-600/40 text-sky-100 rounded-2xl px-3 py-2 max-w-[80%] break-words">
                 {message.content}
               </div>
             </div>
           ) : (
-            <div key={`${message.role}-${index}`} className="flex items-start gap-2">
+            <div key={message.id} className="group flex items-start gap-2">
               <img
                 src="/stitch_icon.jpeg"
                 alt="Stitch"
@@ -169,6 +220,37 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
                 />
                 <div className="bg-gray-800 text-gray-200 rounded-2xl px-3 py-2 break-words">
                   {message.content}
+                </div>
+                {/* Feedback buttons */}
+                <div
+                  className={`flex gap-1 mt-1 ${
+                    message.feedback ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                  } transition-opacity`}
+                >
+                  <button
+                    onClick={() => handleFeedbackClick(message, 'like')}
+                    disabled={!!message.feedback}
+                    className={`p-1 rounded transition-colors ${
+                      message.feedback === 'like'
+                        ? 'text-green-500 bg-green-500/20'
+                        : 'text-gray-500 hover:text-green-500 hover:bg-green-500/10'
+                    } disabled:cursor-default`}
+                    aria-label="Like this response"
+                  >
+                    <ThumbsUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleFeedbackClick(message, 'dislike')}
+                    disabled={!!message.feedback}
+                    className={`p-1 rounded transition-colors ${
+                      message.feedback === 'dislike'
+                        ? 'text-red-500 bg-red-500/20'
+                        : 'text-gray-500 hover:text-red-500 hover:bg-red-500/10'
+                    } disabled:cursor-default`}
+                    aria-label="Dislike this response"
+                  >
+                    <ThumbsDown className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -195,6 +277,16 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
           <Send className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Feedback Modal */}
+      <FeedbackModal
+        isOpen={feedbackModal.isOpen}
+        onClose={handleFeedbackClose}
+        onSubmit={handleFeedbackSubmit}
+        feedbackType={feedbackModal.feedbackType}
+        messagePreview={feedbackModal.message?.content || ''}
+        isSubmitting={isSubmittingFeedback}
+      />
     </div>
   );
 }
