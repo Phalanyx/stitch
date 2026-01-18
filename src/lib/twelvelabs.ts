@@ -8,6 +8,19 @@ const client = new TwelveLabs({ apiKey: process.env.TWELVE_LABS_API_KEY! });
 
 const INDEX_ID = process.env.TWELVE_LABS_INDEX_ID!;
 
+// Search types
+export interface VideoSearchResult {
+  videoId: string;
+  score: number;
+  start: number;
+  end: number;
+  confidence: string;
+  thumbnailUrl?: string;
+}
+
+// Search options supported by TwelveLabs API
+export type SearchOption = 'visual' | 'audio' | 'transcription';
+
 /**
  * Download a file from a URL to a local path
  * Handles redirects and uses streaming to avoid memory issues
@@ -245,4 +258,56 @@ export async function createIndex(indexName: string): Promise<string> {
   });
 
   return index.id!;
+}
+
+/**
+ * Search indexed videos using natural language queries
+ * Returns matching clips with videoId, start/end times, score, and confidence
+ */
+export async function searchVideos(
+  query: string,
+  options?: {
+    searchOptions?: SearchOption[];
+    limit?: number;
+  }
+): Promise<VideoSearchResult[]> {
+  const searchOptions = options?.searchOptions ?? ['visual'];
+  const limit = options?.limit ?? 10;
+
+  console.log(`[Twelve Labs] Searching for: "${query}" with options:`, searchOptions);
+
+  const response = await client.search.query({
+    indexId: INDEX_ID,
+    queryText: query,
+    searchOptions: searchOptions,
+  });
+
+  const results: VideoSearchResult[] = [];
+
+  // Collect results from the search response (only high confidence)
+  for await (const clip of response) {
+    if (results.length >= limit) break;
+
+    // Skip clips without required data or non-high confidence
+    if (!clip.videoId || clip.start === undefined || clip.end === undefined) {
+      continue;
+    }
+
+    if (clip.confidence !== 'high') {
+      continue;
+    }
+
+    results.push({
+      videoId: clip.videoId,
+      score: clip.score ?? 0,
+      start: clip.start,
+      end: clip.end,
+      confidence: clip.confidence,
+      thumbnailUrl: clip.thumbnailUrl,
+    });
+  }
+
+  console.log(`[Twelve Labs] Found ${results.length} matching clips`);
+
+  return results;
 }

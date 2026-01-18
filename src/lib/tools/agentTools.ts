@@ -8,6 +8,7 @@ export const TOOL_DEFINITIONS = [
   { name: 'list_clips', description: 'List clips ON the timeline. Returns clipId (needed for remove/move), timestamp, duration. CALL THIS FIRST to delete or move clips.' },
   { name: 'list_audio', description: 'List audio clips on timeline with clipId, timestamp, duration.' },
   { name: 'list_uploaded_videos', description: 'List available source videos. Returns videoId (needed for add_video), name. CALL THIS to find videos to add.' },
+  { name: 'search_videos', description: 'Search indexed videos using natural language. Args: {query, searchOptions?: ["visual"|"audio"|"transcription"], limit?: number}. Returns matching clips with videoId, start/end times, score.' },
 
   // Video modification tools
   { name: 'add_video', description: 'Add a video TO the timeline. Args: {videoId (from list_uploaded_videos), timestamp?}.' },
@@ -125,6 +126,48 @@ export function createClientToolRegistry(options?: {
         return errorOutput(videos);
       }
       return { status: 'ok', changed: false, output: videos };
+    },
+
+    search_videos: async (args) => {
+      const query = String(args.query ?? '');
+      if (!query) {
+        return errorOutput('Missing query argument.');
+      }
+
+      const searchOptions = args.searchOptions as string[] | undefined;
+      const limit = args.limit !== undefined ? Number(args.limit) : undefined;
+
+      const response = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, searchOptions, limit }),
+      });
+
+      const data = (await response.json()) as {
+        results?: Array<{
+          videoId: string;
+          score: number;
+          start: number;
+          end: number;
+          confidence: string;
+          thumbnailUrl?: string;
+        }>;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        return errorOutput(data.error || 'Failed to search videos.');
+      }
+
+      return {
+        status: 'ok',
+        changed: false,
+        output: {
+          query,
+          matchCount: data.results?.length ?? 0,
+          clips: data.results ?? [],
+        },
+      };
     },
 
     // Video modification tools
