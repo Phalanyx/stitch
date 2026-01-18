@@ -75,13 +75,15 @@ export async function POST(request: NextRequest) {
       body.prompt ||
       'Create a smooth, cinematic fade transition between the two frames. Begin with the first frame and end with the second frame.';
 
+    const durationSeconds = Math.min(8, Math.max(4, body.durationSeconds ?? 4));
+
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-generate-preview',
       prompt,
       image: firstFrame,
       config: {
         numberOfVideos: 1,
-        durationSeconds: body.durationSeconds ?? 2,
+        durationSeconds,
         generateAudio: false,
         lastFrame,
       },
@@ -89,15 +91,24 @@ export async function POST(request: NextRequest) {
 
     while (!operation.done) {
       await new Promise((resolve) => setTimeout(resolve, 10000));
-      operation = await ai.operations.get({ operation });
+      operation = await ai.operations.getVideosOperation({ operation: operation });
     }
 
     const video = operation.response?.generatedVideos?.[0];
     if (!video) {
+      console.error('[transitions] No video generated in operation response:', JSON.stringify(operation.response));
       return NextResponse.json({ error: 'No video generated' }, { status: 502 });
     }
 
-    await ai.files.download({ file: video, downloadPath: outputPath });
+    // Download video using authenticated URL
+    const videoUrl = `${video.video.uri}&key=${apiKey}`;
+    const videoResp = await fetch(videoUrl);
+    if (!videoResp.ok) {
+      console.error('[transitions] Failed to download video:', videoResp.status, videoResp.statusText);
+      return NextResponse.json({ error: 'Failed to download generated video' }, { status: 502 });
+    }
+    const videoBuffer = Buffer.from(await videoResp.arrayBuffer());
+    await fs.promises.writeFile(outputPath, videoBuffer);
 
     const transitionDuration = await getVideoDuration(outputPath);
     const fileName = `transition_${transitionId}.mp4`;
@@ -109,6 +120,7 @@ export async function POST(request: NextRequest) {
       .upload(filePath, buffer, { contentType: 'video/mp4' });
 
     if (uploadError) {
+      console.error('[transitions] Upload error:', uploadError.message);
       return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
 
@@ -133,6 +145,7 @@ export async function POST(request: NextRequest) {
       duration: videoRecord.duration,
     });
   } catch (error) {
+    console.error('[transitions] Error creating transition:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to create transition' },
       { status: 500 }

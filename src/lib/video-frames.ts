@@ -93,7 +93,8 @@ export async function extractFrameAtTime(
   return new Promise((resolve, reject) => {
     ffmpeg(videoPath)
       .seekInput(Math.max(timeSeconds, 0))
-      .outputOptions('-frames:v 1', '-q:v 2')
+      .frames(1)
+      .outputOptions(['-q:v', '2'])
       .output(outputPath)
       .on('end', () => resolve())
       .on('error', (err) => reject(err))
