@@ -79,7 +79,7 @@ export function AuthForm() {
         </div>
 
         {error && (
-          <p className={`text-sm ${error.includes('Check your email') ? 'text-green-400' : 'text-red-400'}`}>
+          <p className={`text-sm ${error.includes('Check your email') ? 'text-violet-400' : 'text-red-400'}`}>
             {error}
           </p>
         )}
@@ -87,7 +87,7 @@ export function AuthForm() {
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white rounded-md transition-colors"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 disabled:bg-slate-600/50 text-white rounded-md transition-colors"
         >
           {isLoading ? (
             <>

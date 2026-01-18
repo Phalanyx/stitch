@@ -272,16 +272,17 @@ export function Editor() {
 
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
-      {/* Export Button */}
-      <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 px-4 py-2 flex justify-end">
+      {/* Top Bar */}
+      <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 h-10 flex items-center justify-between px-3">
+        <div className="text-sm text-gray-300 font-medium">Stitch Editor</div>
         <button
           onClick={handleExport}
           disabled={isExporting || clips.length === 0}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+          className="flex items-center gap-2 px-3 h-7 bg-slate-600 hover:bg-slate-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm transition-colors"
           title={clips.length === 0 ? 'Add clips to timeline to export' : 'Export video'}
         >
-          <Download className="w-4 h-4" />
-          <span>{isExporting ? 'Exporting...' : 'Export Video'}</span>
+          <Download className="w-3.5 h-3.5" />
+          <span>{isExporting ? 'Exporting...' : 'Export'}</span>
         </button>
       </div>
 

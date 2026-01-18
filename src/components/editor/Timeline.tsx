@@ -320,7 +320,7 @@ export function Timeline({
       <div className="flex-shrink-0 border-r border-gray-700 relative" style={{ width: `${trackLabelWidth}px` }}>
         {/* Resize handle */}
         <div
-          className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-blue-500 z-10"
+          className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-slate-500 z-10"
           onMouseDown={() => setIsResizingTrackLabel(true)}
         />
         {/* Time markers spacer */}
@@ -331,7 +331,7 @@ export function Timeline({
           className="flex items-center justify-center border-b border-gray-700 gap-1"
           style={{ height: `${VIDEO_TRACK_HEIGHT}px` }}
         >
-          <Film size={14} className="text-blue-400" />
+          <Film size={14} className="text-slate-400" />
           <span className="text-xs text-gray-400">Video</span>
         </div>
 
@@ -340,7 +340,7 @@ export function Timeline({
           <div
             key={layer.id}
             className={`flex items-center px-1 border-b border-gray-700 gap-1 cursor-pointer ${
-              activeLayerId === layer.id ? 'bg-green-900/30' : ''
+              activeLayerId === layer.id ? 'bg-violet-900/30' : ''
             }`}
             style={{ height: `${AUDIO_TRACK_HEIGHT}px` }}
             onClick={() => handleSetActiveLayer(layer.id)}
@@ -350,7 +350,7 @@ export function Timeline({
                 e.stopPropagation();
                 onToggleLayerMute?.(layer.id);
               }}
-              className={`p-1 rounded hover:bg-gray-700 flex-shrink-0 ${layer.muted ? 'text-red-400' : 'text-green-400'}`}
+              className={`p-1 rounded hover:bg-gray-700 flex-shrink-0 ${layer.muted ? 'text-red-400' : 'text-violet-400'}`}
               title={layer.muted ? 'Unmute layer' : 'Mute layer'}
             >
               {layer.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
@@ -392,7 +392,7 @@ export function Timeline({
         {/* Add layer button row */}
         <div
           className={`flex items-center justify-center border-b border-gray-700 transition-colors ${
-            isDraggingOverNewTrack ? 'bg-green-500/20' : ''
+            isDraggingOverNewTrack ? 'bg-violet-500/20' : ''
           }`}
           style={{ height: `${ADD_BUTTON_HEIGHT}px` }}
           onDragOver={handleNewTrackDragOver}
@@ -401,7 +401,7 @@ export function Timeline({
         >
           <button
             onClick={onAddLayer}
-            className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-green-400"
+            className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-violet-400"
             title="Add audio layer"
           >
             <Plus size={14} />
@@ -430,11 +430,11 @@ export function Timeline({
             {markers.map((second) => (
               <div
                 key={second}
-                className="absolute text-xs text-gray-400 pointer-events-none"
+                className="absolute text-xs text-gray-500 pointer-events-none"
                 style={{ left: `${second * PIXELS_PER_SECOND}px` }}
               >
-                <div className="h-2 w-px bg-gray-600" />
-                <span className="ml-1">{second}s</span>
+                <div className="h-1.5 w-px bg-gray-700" />
+                <span className="ml-0.5">{second}s</span>
               </div>
             ))}
           </div>
@@ -451,7 +451,7 @@ export function Timeline({
           {/* Video track */}
           <div
             className={`absolute left-0 right-0 border-b border-gray-700 transition-colors ${
-              isDraggingOverVideo ? 'bg-blue-500/20' : ''
+              isDraggingOverVideo ? 'bg-slate-500/20' : ''
             }`}
             style={{ top: `${TIME_MARKERS_HEIGHT}px`, height: `${VIDEO_TRACK_HEIGHT}px` }}
             onDragOver={handleVideoDragOver}
@@ -484,8 +484,8 @@ export function Timeline({
             <div
               key={layer.id}
               className={`absolute left-0 right-0 border-b border-gray-700 transition-colors ${
-                isDraggingOverAudio[layer.id] ? 'bg-green-500/20' : ''
-              } ${activeLayerId === layer.id ? 'bg-green-900/10' : ''} ${
+                isDraggingOverAudio[layer.id] ? 'bg-violet-500/20' : ''
+              } ${activeLayerId === layer.id ? 'bg-violet-900/10' : ''} ${
                 layer.muted ? 'opacity-50' : ''
               }`}
               style={{
@@ -522,7 +522,7 @@ export function Timeline({
           {/* Drop zone row for adding new track with audio */}
           <div
             className={`absolute left-0 right-0 border-b border-gray-700 transition-colors ${
-              isDraggingOverNewTrack ? 'bg-green-500/20' : ''
+              isDraggingOverNewTrack ? 'bg-violet-500/20' : ''
             }`}
             style={{
               top: `${tracksHeight}px`,

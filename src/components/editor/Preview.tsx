@@ -570,8 +570,8 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
 
   return (
     <div
-      className={`flex-1 bg-black flex flex-col overflow-hidden transition-all ${
-        isDraggingOver ? 'ring-2 ring-blue-500 ring-inset bg-blue-500/10' : ''
+      className={`flex-1 bg-black flex flex-col overflow-hidden ${
+        isDraggingOver ? 'ring-1 ring-inset ring-blue-500/50' : ''
       }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -604,59 +604,56 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
       </div>
 
       {/* Controls Area */}
-      <div className="flex-shrink-0 pb-4 px-4">
-        {/* Transport Controls */}
-        <div className="flex justify-center items-center gap-2">
-          {/* Skip to Beginning */}
-          <button
-            onClick={handleSkipToBeginning}
-            disabled={!activeClip || sortedClips.length === 0}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Skip to beginning"
-          >
-            <SkipBack className="w-5 h-5 text-white" />
-          </button>
+      <div className="flex-shrink-0 bg-gray-800 border-t border-gray-700 h-10 flex items-center justify-center gap-1 px-2">
+        {/* Skip to Beginning */}
+        <button
+          onClick={handleSkipToBeginning}
+          disabled={!activeClip || sortedClips.length === 0}
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          title="Skip to beginning"
+        >
+          <SkipBack className="w-4 h-4 text-gray-300" />
+        </button>
 
-          {/* Play Backward */}
-          <button
-            onClick={handlePlayBackward}
-            disabled={!activeClip}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Play backward"
-          >
-            <Play className="w-5 h-5 text-white rotate-180" />
-          </button>
+        {/* Play Backward */}
+        <button
+          onClick={handlePlayBackward}
+          disabled={!activeClip}
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          title="Play backward"
+        >
+          <Play className="w-4 h-4 text-gray-300 rotate-180" />
+        </button>
 
-          {/* Pause */}
-          <button
-            onClick={handlePause}
-            disabled={!activeClip || !isPlaying}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Pause"
-          >
-            <Pause className="w-5 h-5 text-white" />
-          </button>
+        {/* Pause */}
+        <button
+          onClick={handlePause}
+          disabled={!activeClip || !isPlaying}
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          title="Pause"
+        >
+          <Pause className="w-4 h-4 text-gray-300" />
+        </button>
 
-          {/* Play Forward */}
-          <button
-            onClick={handlePlayForward}
-            disabled={!activeClip}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Play forward"
-          >
-            <Play className="w-5 h-5 text-white" />
-          </button>
+        {/* Play Forward */}
+        <button
+          onClick={handlePlayForward}
+          disabled={!activeClip}
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          title="Play forward"
+        >
+          <Play className="w-4 h-4 text-gray-300" />
+        </button>
 
-          {/* Skip to End */}
-          <button
-            onClick={handleSkipToEnd}
-            disabled={!activeClip || sortedClips.length === 0}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Skip to end"
-          >
-            <SkipForward className="w-5 h-5 text-white" />
-          </button>
-        </div>
+        {/* Skip to End */}
+        <button
+          onClick={handleSkipToEnd}
+          disabled={!activeClip || sortedClips.length === 0}
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          title="Skip to end"
+        >
+          <SkipForward className="w-4 h-4 text-gray-300" />
+        </button>
       </div>
     </div>
   );
