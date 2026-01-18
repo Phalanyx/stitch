@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         url: publicUrl,
         fileName: displayName,
+        duration: videoDuration,
         twelveLabsTaskId,
         twelveLabsStatus,
         audioId,

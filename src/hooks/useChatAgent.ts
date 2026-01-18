@@ -174,7 +174,7 @@ export function useChatAgent(
         patternNotifications,
       });
 
-      // Handle paused state with tool options preview
+      // Handle tool options preview - pause and show options to user
       if (result.isPaused && result.toolOptionsPreview) {
         setPendingSelection({
           toolCall: result.toolOptionsPreview.pendingToolCall,
@@ -190,12 +190,13 @@ export function useChatAgent(
             toolOptions: result.toolOptionsPreview,
           },
         ]);
-      } else {
-        setMessages((current) => [
-          ...current,
-          { id: generateId(), role: 'assistant', content: result.response || 'Unable to generate a response.' },
-        ]);
+        return;
       }
+
+      setMessages((current) => [
+        ...current,
+        { id: generateId(), role: 'assistant', content: result.response || 'Unable to generate a response.' },
+      ]);
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -209,7 +210,79 @@ export function useChatAgent(
     } finally {
       setIsSending(false);
     }
-  }, [audioRef, clipsRef, consumeNotifications, input, isSending, knownClipIds, messages, showToolOptionsPreview]);
+  }, [audioRef, clipsRef, input, isSending, knownClipIds, messages, showToolOptionsPreview]);
+
+  const selectToolOption = useCallback(async (selectedValue: string) => {
+    if (!pendingSelection) return;
+
+    setIsSending(true);
+    // Remove the tool_options message
+    setMessages((current) => current.filter((m) => m.role !== 'tool_options'));
+
+    try {
+      const result = await runChatOrchestrator({
+        message: pendingSelection.originalMessage,
+        knownClipIds,
+        context: {
+          clips: clipsRef.current,
+          audioClips: audioRef.current,
+        },
+        onAudioCreated: onAudioCreatedRef.current,
+        onTimelineChanged: onTimelineChangedRef.current,
+        conversation: messages
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        showToolOptionsPreview,
+        resumeWithSelection: {
+          toolCall: pendingSelection.toolCall,
+          selectedValue,
+          pendingPlan: pendingSelection.pendingPlan,
+        },
+      });
+
+      setMessages((current) => [
+        ...current,
+        { id: generateId(), role: 'assistant', content: result.response || 'Unable to generate a response.' },
+      ]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: generateId(),
+          role: 'assistant',
+          content: error instanceof Error ? error.message : 'Failed to complete selection.',
+        },
+      ]);
+    } finally {
+      setPendingSelection(null);
+      setIsSending(false);
+    }
+  }, [pendingSelection, knownClipIds, messages, showToolOptionsPreview]);
+
+  const cancelToolOptions = useCallback(() => {
+    // Remove the tool_options message
+    setMessages((current) => current.filter((m) => m.role !== 'tool_options'));
+    // Add cancellation message
+    setMessages((current) => [
+      ...current,
+      {
+        id: generateId(),
+        role: 'assistant',
+        content: 'Action cancelled. What would you like to do instead?',
+      },
+    ]);
+    setPendingSelection(null);
+  }, []);
+
+  const markMessageFeedback = useCallback((messageId: string, feedback: 'like' | 'dislike') => {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId ? { ...message, feedback } : message
+      )
+    );
+  }, []);
+
+  const hasPendingSelection = Boolean(pendingSelection);
 
   return {
     messages,
