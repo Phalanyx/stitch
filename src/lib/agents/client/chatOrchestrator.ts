@@ -28,7 +28,7 @@ type ChatOrchestratorInput = {
   context: AgentContext;
   toolResults?: ToolResult[];
   onAudioCreated?: (audio: AudioMetadata) => void;
-  onTimelineChanged?: () => void;
+  onTimelineChanged?: () => void | Promise<void>;
   conversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
   showToolOptionsPreview?: boolean;
   patternNotifications?: PatternObservation[];
@@ -394,7 +394,7 @@ async function executeToolPlan(
 
   // Notify if timeline was modified so frontend can refetch
   if (timelineChanged && input.onTimelineChanged) {
-    input.onTimelineChanged();
+    await input.onTimelineChanged();
   }
 
   return {

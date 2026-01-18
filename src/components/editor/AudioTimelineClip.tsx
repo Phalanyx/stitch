@@ -396,15 +396,6 @@ export function AudioTimelineClip({
             {clip.muted ? 'Unmute' : 'Mute'}
           </button>
           <button
-            className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700"
-            onClick={() => {
-              onToggleMute?.(clip.id, layerId);
-              contextMenu.closeContextMenu();
-            }}
-          >
-            {clip.muted ? 'Unmute' : 'Mute'}
-          </button>
-          <button
             className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700 rounded"
             onClick={() => {
               onRemove(clip.id, layerId);

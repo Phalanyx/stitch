@@ -28,3 +28,6 @@ export { createRenameLayerCommand } from './layer/renameLayerCommand';
 // Batch commands
 export { createBatchDeleteCommand } from './batch/batchDeleteCommand';
 export { createBatchPasteCommand } from './batch/batchPasteCommand';
+
+// LLM commands
+export { createLLMBatchCommand } from './llm/llmBatchCommand';

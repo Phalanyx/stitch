@@ -12,7 +12,7 @@ interface ChatAgentProps {
   clips: VideoReference[];
   audioClips: VideoReference[];
   onAudioCreated?: (audio: AudioMetadata) => void;
-  onTimelineChanged?: () => void;
+  onTimelineChanged?: () => void | Promise<void>;
   isOpen: boolean;
   width: number;
   onToggle: () => void;

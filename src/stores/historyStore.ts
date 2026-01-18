@@ -29,6 +29,7 @@ interface HistoryState {
   onAnalysisTrigger?: () => void;
 
   execute: (command: Command) => void;
+  addWithoutExecute: (command: Command) => void;
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
@@ -71,6 +72,30 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
       return {
         undoStack: newUndoStack,
         // Clear redo stack when new command is executed
+        redoStack: [],
+        totalExecuted: state.totalExecuted + 1,
+        commandsSinceLastAnalysis: shouldTrigger ? 0 : newCommandCount,
+      };
+    });
+  },
+
+  // Add command to history without executing (for LLM actions already applied via API)
+  addWithoutExecute: (command: Command) => {
+    set((state) => {
+      const newUndoStack = [...state.undoStack, command];
+      if (newUndoStack.length > MAX_HISTORY_SIZE) {
+        newUndoStack.shift();
+      }
+
+      const newCommandCount = state.commandsSinceLastAnalysis + 1;
+      const shouldTrigger = newCommandCount >= ANALYSIS_TRIGGER_THRESHOLD && state.onAnalysisTrigger;
+
+      if (shouldTrigger) {
+        setTimeout(() => state.onAnalysisTrigger?.(), 0);
+      }
+
+      return {
+        undoStack: newUndoStack,
         redoStack: [],
         totalExecuted: state.totalExecuted + 1,
         commandsSinceLastAnalysis: shouldTrigger ? 0 : newCommandCount,

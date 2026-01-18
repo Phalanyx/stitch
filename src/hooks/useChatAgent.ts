@@ -4,6 +4,10 @@ import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { ToolCall } from '@/lib/agents/client/types';
 import { useHistoryAgent } from './useHistoryAgent';
+import { useTimelineStore } from '@/stores/timelineStore';
+import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
+import { useHistoryStore } from '@/stores/historyStore';
+import { createLLMBatchCommand } from '@/lib/commands';
 
 export type ToolOptionsData = ToolOptionsPreview;
 
@@ -32,7 +36,7 @@ export function useChatAgent(
   clips: VideoReference[],
   audioClips: VideoReference[],
   onAudioCreated?: (audio: AudioMetadata) => void,
-  onTimelineChanged?: () => void
+  onTimelineChanged?: () => void | Promise<void>
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -116,6 +120,10 @@ export function useChatAgent(
 
     const patternNotifications = consumeNotifications();
 
+    // Capture state BEFORE LLM execution (deep copy)
+    const beforeClips = JSON.parse(JSON.stringify(useTimelineStore.getState().clips));
+    const beforeAudioLayers = JSON.parse(JSON.stringify(useAudioTimelineStore.getState().audioLayers));
+
     try {
       const result = await runChatOrchestrator({
         message: trimmed,
@@ -130,6 +138,25 @@ export function useChatAgent(
         showToolOptionsPreview,
         patternNotifications,
       });
+
+      // After orchestrator completes (refetch awaited inside), capture AFTER state
+      const afterClips = useTimelineStore.getState().clips;
+      const afterAudioLayers = useAudioTimelineStore.getState().audioLayers;
+
+      // Check if timeline changed
+      const clipsChanged = JSON.stringify(beforeClips) !== JSON.stringify(afterClips);
+      const audioChanged = JSON.stringify(beforeAudioLayers) !== JSON.stringify(afterAudioLayers);
+
+      if (clipsChanged || audioChanged) {
+        const batchCommand = createLLMBatchCommand({
+          description: `AI: ${trimmed.slice(0, 40)}${trimmed.length > 40 ? '...' : ''}`,
+          beforeClips,
+          afterClips: JSON.parse(JSON.stringify(afterClips)),
+          beforeAudioLayers,
+          afterAudioLayers: JSON.parse(JSON.stringify(afterAudioLayers)),
+        });
+        useHistoryStore.getState().addWithoutExecute(batchCommand);
+      }
 
       if (result.isPaused && result.toolOptionsPreview) {
         setPendingSelection({
@@ -191,6 +218,10 @@ export function useChatAgent(
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
+    // Capture state BEFORE LLM execution (deep copy)
+    const beforeClips = JSON.parse(JSON.stringify(useTimelineStore.getState().clips));
+    const beforeAudioLayers = JSON.parse(JSON.stringify(useAudioTimelineStore.getState().audioLayers));
+
     try {
       const result = await runChatOrchestrator({
         message: pendingSelection.originalMessage,
@@ -208,6 +239,25 @@ export function useChatAgent(
           pendingPlan: pendingSelection.pendingPlan,
         },
       });
+
+      // After orchestrator completes (refetch awaited inside), capture AFTER state
+      const afterClips = useTimelineStore.getState().clips;
+      const afterAudioLayers = useAudioTimelineStore.getState().audioLayers;
+
+      // Check if timeline changed
+      const clipsChanged = JSON.stringify(beforeClips) !== JSON.stringify(afterClips);
+      const audioChanged = JSON.stringify(beforeAudioLayers) !== JSON.stringify(afterAudioLayers);
+
+      if (clipsChanged || audioChanged) {
+        const batchCommand = createLLMBatchCommand({
+          description: `AI: ${pendingSelection.originalMessage.slice(0, 40)}${pendingSelection.originalMessage.length > 40 ? '...' : ''}`,
+          beforeClips,
+          afterClips: JSON.parse(JSON.stringify(afterClips)),
+          beforeAudioLayers,
+          afterAudioLayers: JSON.parse(JSON.stringify(afterAudioLayers)),
+        });
+        useHistoryStore.getState().addWithoutExecute(batchCommand);
+      }
 
       setMessages((current) => [
         ...current,

@@ -21,4 +21,5 @@ export type CommandType =
   | 'layer:toggleMute'
   | 'layer:rename'
   | 'batch:delete'
-  | 'batch:paste';
+  | 'batch:paste'
+  | 'llm:batch';
