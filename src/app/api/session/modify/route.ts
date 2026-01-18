@@ -99,26 +99,36 @@ export async function POST(request: NextRequest) {
 
       // Generate a unique clip ID
       const clipId = crypto.randomUUID();
-      const fullDuration = video.duration ?? 5;
 
-      // Apply trim values (trimStart/trimEnd are seconds into the source video)
-      const clipTrimStart = trimStart ?? 0;
-      const clipTrimEnd = trimEnd !== undefined ? (fullDuration - trimEnd) : 0;
-      const effectiveDuration = fullDuration - clipTrimStart - clipTrimEnd;
+      if (!video.duration) {
+        return errorResponse('Video duration not available. Please re-upload the video.');
+      }
+      const fullDuration = video.duration;
 
-      if (effectiveDuration <= 0) {
-        return errorResponse('Invalid trim values: resulting clip duration would be <= 0');
+      // Only apply trim values when explicitly provided (from search results)
+      const hasTrim = trimStart !== undefined || trimEnd !== undefined;
+      let clipTrimStart = 0;
+      let clipTrimEnd = 0;
+      let effectiveDuration = fullDuration;
+
+      if (hasTrim) {
+        clipTrimStart = trimStart ?? 0;
+        clipTrimEnd = trimEnd !== undefined ? (fullDuration - trimEnd) : 0;
+        effectiveDuration = fullDuration - clipTrimStart - clipTrimEnd;
+
+        if (effectiveDuration <= 0) {
+          return errorResponse('Invalid trim values: resulting clip duration would be <= 0');
+        }
       }
 
-      // Create new clip with trim values
+      // Create new clip (only include trim values if trimming is applied)
       const newClip: VideoReference = {
         id: clipId,
         videoId: video.id,
         url: video.url,
         timestamp: 0,
         duration: fullDuration,
-        trimStart: clipTrimStart,
-        trimEnd: clipTrimEnd,
+        ...(hasTrim && { trimStart: clipTrimStart, trimEnd: clipTrimEnd }),
       };
 
       // Determine position on timeline
@@ -156,9 +166,13 @@ export async function POST(request: NextRequest) {
         const audioClipId = crypto.randomUUID();
         const audioFullDuration = video.audio.duration ?? fullDuration;
 
-        // Apply same trim to audio (proportionally if durations differ)
-        const audioTrimStart = clipTrimStart;
-        const audioTrimEnd = trimEnd !== undefined ? (audioFullDuration - trimEnd) : 0;
+        // Only apply trim to audio when video has trim values
+        let audioTrimStart = 0;
+        let audioTrimEnd = 0;
+        if (hasTrim) {
+          audioTrimStart = clipTrimStart;
+          audioTrimEnd = trimEnd !== undefined ? (audioFullDuration - trimEnd) : 0;
+        }
 
         const newAudioClip: AudioReference = {
           id: audioClipId,
@@ -166,8 +180,7 @@ export async function POST(request: NextRequest) {
           url: video.audio.url,
           timestamp: validTimestamp, // Same timestamp as video
           duration: audioFullDuration,
-          trimStart: audioTrimStart,
-          trimEnd: audioTrimEnd,
+          ...(hasTrim && { trimStart: audioTrimStart, trimEnd: audioTrimEnd }),
         };
 
         // Find valid position for audio (avoiding overlaps in audio layer)

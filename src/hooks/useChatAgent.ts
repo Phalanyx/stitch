@@ -58,6 +58,7 @@ export function useChatAgent(
         },
         onAudioCreated: onAudioCreatedRef.current,
         onTimelineChanged: onTimelineChangedRef.current,
+        conversation: nextMessages,
       });
       setMessages((current) => [
         ...current,

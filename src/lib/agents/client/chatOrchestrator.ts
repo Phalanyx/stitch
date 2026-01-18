@@ -18,6 +18,7 @@ type ChatOrchestratorInput = {
   toolResults?: ToolResult[];
   onAudioCreated?: (audio: AudioMetadata) => void;
   onTimelineChanged?: () => void;
+  conversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
 };
 
 type ChatOrchestratorOutput = {
@@ -28,6 +29,7 @@ type ChatOrchestratorOutput = {
 export async function runChatOrchestrator(
   input: ChatOrchestratorInput
 ): Promise<ChatOrchestratorOutput> {
+  const conversation = input.conversation ?? [];
   const tools = createClientToolRegistry({
     onAudioCreated: input.onAudioCreated,
   });
@@ -43,6 +45,7 @@ export async function runChatOrchestrator(
       toolList,
       '',
       `User request: ${input.message}`,
+      `Conversation context: ${JSON.stringify(conversation.slice(-6))}`,
       `Timeline clip IDs: ${input.knownClipIds.join(', ') || 'none'}`,
       '',
       '=== CRITICAL: ID Types ===',
@@ -127,6 +130,7 @@ export async function runChatOrchestrator(
             'IMPORTANT: Respond with ONLY JSON: {"satisfied":true,"response":"..."} or {"satisfied":false}',
             '',
             `User request: ${input.message}`,
+            `Conversation context: ${JSON.stringify(conversation.slice(-6))}`,
             `Actions performed: ${JSON.stringify(toolResults)}`,
             '',
             'IMPORTANT: The user request is NOT fulfilled if:',
@@ -178,6 +182,7 @@ export async function runChatOrchestrator(
             toolList,
             '',
             `User request: ${input.message}`,
+            `Conversation context: ${JSON.stringify(conversation.slice(-6))}`,
             `Actions already performed: ${JSON.stringify(toolResults)}`,
             '',
             'Based on the results above, what is the NEXT action needed to fulfill the request?',
@@ -227,6 +232,7 @@ export async function runChatOrchestrator(
       'Respond naturally in 1-2 sentences.',
       '',
       `User said: ${input.message}`,
+      `Conversation context: ${JSON.stringify(conversation.slice(-6))}`,
     ];
 
     if (hasErrors) {

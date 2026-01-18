@@ -15,7 +15,7 @@ interface TimelineClipProps {
   onUpdateTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   onRemove: (id: string) => void;
   isSelected?: boolean;
-  onSelect?: (id: string) => void;
+  onSelect?: (id: string, shiftKey: boolean) => void;
 }
 
 export function TimelineClip({
@@ -51,7 +51,7 @@ export function TimelineClip({
     e.stopPropagation();
     setContextMenuPos({ x: e.clientX, y: e.clientY });
     setShowContextMenu(true);
-    onSelect?.(clip.id);
+    onSelect?.(clip.id, false);
   };
 
   // Calculate visible duration after trimming
@@ -166,7 +166,7 @@ export function TimelineClip({
       onContextMenu={handleContextMenu}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect?.(clip.id);
+        onSelect?.(clip.id, e.shiftKey);
       }}
     >
       {/* Left resize handle */}

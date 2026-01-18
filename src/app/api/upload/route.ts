@@ -65,17 +65,19 @@ export async function POST(request: NextRequest) {
       twelveLabsStatus = 'failed';
       // Continue without Twelve Labs - video is still usable from Supabase
     }
-
-    // Step 3: Extract audio from video (non-blocking - failure doesn't stop upload)
-    let audioId: string | null = null;
+  // Step 3: Extract audio from video (non-blocking - failure doesn't stop upload)
+  let audioId: string | null = null;
+  let videoDuration: number | null = null;
 
     try {
       const audioResult = await extractAudioFromVideo(buffer, videoId, baseName);
+    // Store the duration for the video record (same as audio duration)
+    videoDuration = audioResult.duration || null;
 
-      // Upload audio to raw-audio bucket
-      const audioFileName = `${baseName}_audio.mp3`;
-      const audioFilePath = `${user.id}/${videoId}_${audioFileName}`;
-      const audioBuffer = await fs.promises.readFile(audioResult.audioPath);
+    // Upload audio to raw-audio bucket
+    const audioFileName = `${baseName}_audio.mp3`;
+    const audioFilePath = `${user.id}/${videoId}_${audioFileName}`;
+    const audioBuffer = await fs.promises.readFile(audioResult.audioPath);
 
       const { error: audioUploadError } = await supabaseAdmin.storage
         .from('raw-audio')
@@ -145,4 +147,32 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  // Step 4: Save video metadata to database via Prisma
+  const video = await prisma.video.create({
+    data: {
+      id: videoId,
+      userId: user.id,
+      url: publicUrl,
+      fileName: displayName,
+      duration: videoDuration,
+      twelveLabsTaskId,
+      twelveLabsStatus,
+      audioId,
+    },
+    include: { audio: true },
+  });
+
+  // Convert BigInt fileSize to number for JSON serialization
+  const serializedVideo = {
+    ...video,
+    audio: video.audio
+      ? {
+          ...video.audio,
+          fileSize: video.audio.fileSize ? Number(video.audio.fileSize) : null,
+        }
+      : null,
+  };
+
+  return NextResponse.json({ video: serializedVideo });
 }

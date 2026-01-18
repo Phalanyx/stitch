@@ -16,7 +16,7 @@ interface AudioTimelineClipProps {
   onUpdateTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId: string) => void;
   onRemove: (id: string, layerId: string) => void;
   isSelected?: boolean;
-  onSelect?: (id: string) => void;
+  onSelect?: (id: string, shiftKey: boolean, layerId: string) => void;
 }
 
 export function AudioTimelineClip({
@@ -53,7 +53,7 @@ export function AudioTimelineClip({
     e.stopPropagation();
     setContextMenuPos({ x: e.clientX, y: e.clientY });
     setShowContextMenu(true);
-    onSelect?.(clip.id);
+    onSelect?.(clip.id, false, layerId);
   };
 
   // Calculate visible duration after trimming
@@ -168,7 +168,7 @@ export function AudioTimelineClip({
       onContextMenu={handleContextMenu}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect?.(clip.id);
+        onSelect?.(clip.id, e.shiftKey, layerId);
       }}
     >
       {/* Left resize handle */}

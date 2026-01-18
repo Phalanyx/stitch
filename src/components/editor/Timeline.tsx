@@ -1,11 +1,12 @@
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Film, Music, Plus, Volume2, VolumeX, Trash2 } from 'lucide-react';
 import { TimelineClip } from './TimelineClip';
 import { AudioTimelineClip } from './AudioTimelineClip';
 import { VideoReference } from '@/types/video';
 import { AudioLayer } from '@/types/audio';
+import { useSelectionStore, SelectedClip } from '@/stores/selectionStore';
 
 interface TimelineProps {
   clips: VideoReference[];
@@ -72,9 +73,10 @@ export function Timeline({
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [editingLayerName, setEditingLayerName] = useState('');
   const [isDraggingOverNewTrack, setIsDraggingOverNewTrack] = useState(false);
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
-  const [selectedClipType, setSelectedClipType] = useState<'video' | 'audio' | null>(null);
   const [trackLabelWidth, setTrackLabelWidth] = useState(DEFAULT_TRACK_LABEL_WIDTH);
+
+  // Selection store
+  const { selectedClips, selectClip, clearSelection, selectRange, lastSelectedId, isSelected } = useSelectionStore();
   const [isResizingTrackLabel, setIsResizingTrackLabel] = useState(false);
 
   // Calculate dynamic height based on number of audio layers (include add button row)
@@ -118,23 +120,7 @@ export function Timeline({
     };
   }, [isDraggingPlayhead, onSeek]);
 
-  // Keyboard handler for delete
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedClipId) {
-        e.preventDefault();
-        if (selectedClipType === 'video') {
-          onRemove(selectedClipId);
-        } else if (selectedClipType === 'audio') {
-          onRemoveAudio?.(selectedClipId);
-        }
-        setSelectedClipId(null);
-        setSelectedClipType(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedClipId, selectedClipType, onRemove, onRemoveAudio]);
+  // Keyboard handler for delete - moved to useUndoRedo hook for batch delete support
 
   // Track label resize dragging
   useEffect(() => {
@@ -273,6 +259,51 @@ export function Timeline({
   const handleSetActiveLayer = (layerId: string) => {
     onSetActiveLayer?.(layerId);
   };
+
+  // Get all clips (video and audio) sorted by timestamp for range selection
+  const allClipsSorted = useMemo(() => {
+    const allClips: (SelectedClip & { timestamp: number })[] = [
+      ...clips.map((c) => ({ id: c.id, type: 'video' as const, timestamp: c.timestamp })),
+      ...audioLayers.flatMap((layer) =>
+        layer.clips.map((c) => ({ id: c.id, type: 'audio' as const, layerId: layer.id, timestamp: c.timestamp }))
+      ),
+    ];
+    return allClips.sort((a, b) => a.timestamp - b.timestamp);
+  }, [clips, audioLayers]);
+
+  // Handle video clip selection with shift+click support
+  const handleVideoSelect = useCallback((id: string, shiftKey: boolean) => {
+    if (shiftKey && lastSelectedId) {
+      // Range selection: select all clips between lastSelectedId and clicked clip
+      const lastIndex = allClipsSorted.findIndex((c) => c.id === lastSelectedId);
+      const currentIndex = allClipsSorted.findIndex((c) => c.id === id);
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+        const rangeClips = allClipsSorted.slice(start, end + 1).map(({ timestamp, ...clip }) => clip);
+        selectRange(rangeClips);
+        return;
+      }
+    }
+    selectClip({ id, type: 'video' }, shiftKey);
+  }, [allClipsSorted, lastSelectedId, selectClip, selectRange]);
+
+  // Handle audio clip selection with shift+click support
+  const handleAudioSelect = useCallback((id: string, shiftKey: boolean, layerId: string) => {
+    if (shiftKey && lastSelectedId) {
+      // Range selection: select all clips between lastSelectedId and clicked clip
+      const lastIndex = allClipsSorted.findIndex((c) => c.id === lastSelectedId);
+      const currentIndex = allClipsSorted.findIndex((c) => c.id === id);
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+        const rangeClips = allClipsSorted.slice(start, end + 1).map(({ timestamp, ...clip }) => clip);
+        selectRange(rangeClips);
+        return;
+      }
+    }
+    selectClip({ id, type: 'audio', layerId }, shiftKey);
+  }, [allClipsSorted, lastSelectedId, selectClip, selectRange]);
 
   // Calculate total timeline width based on both video and audio clips (accounting for trim)
   const videoMaxEndTime = clips.reduce((max, clip) => {
@@ -458,8 +489,7 @@ export function Timeline({
             onDragLeave={handleVideoDragLeave}
             onDrop={handleVideoDrop}
             onClick={() => {
-              setSelectedClipId(null);
-              setSelectedClipType(null);
+              clearSelection();
             }}
           >
             {clips.map((clip) => (
@@ -470,11 +500,8 @@ export function Timeline({
                 onUpdateTimestamp={onUpdateTimestamp}
                 onUpdateTrim={onUpdateTrim!}
                 onRemove={onRemove}
-                isSelected={selectedClipId === clip.id && selectedClipType === 'video'}
-                onSelect={(id) => {
-                  setSelectedClipId(id);
-                  setSelectedClipType('video');
-                }}
+                isSelected={isSelected(clip.id)}
+                onSelect={handleVideoSelect}
               />
             ))}
           </div>
@@ -496,8 +523,7 @@ export function Timeline({
               onDragLeave={handleAudioDragLeave(layer.id)}
               onDrop={handleAudioDrop(layer.id)}
               onClick={() => {
-                setSelectedClipId(null);
-                setSelectedClipType(null);
+                clearSelection();
               }}
             >
               {layer.clips.map((clip) => (
@@ -509,11 +535,8 @@ export function Timeline({
                   onUpdateTimestamp={onUpdateAudioTimestamp!}
                   onUpdateTrim={onUpdateAudioTrim!}
                   onRemove={onRemoveAudio!}
-                  isSelected={selectedClipId === clip.id && selectedClipType === 'audio'}
-                  onSelect={(id) => {
-                    setSelectedClipId(id);
-                    setSelectedClipType('audio');
-                  }}
+                  isSelected={isSelected(clip.id)}
+                  onSelect={handleAudioSelect}
                 />
               ))}
             </div>
