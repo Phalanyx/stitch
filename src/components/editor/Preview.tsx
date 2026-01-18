@@ -307,7 +307,14 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         stopReversePlayback();
         return;
       }
-      
+
+      // Stop reverse playback if user is seeking
+      if (isSeekingRef.current) {
+        stopReversePlayback();
+        setIsPlaying(false);
+        return;
+      }
+
       // Calculate actual elapsed time with high precision
       const now = performance.now();
       let deltaTime = (now - lastTimestamp) / 1000; // Convert to seconds
