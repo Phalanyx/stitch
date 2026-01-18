@@ -32,6 +32,7 @@ interface AudioTimelineState {
   addAudioAtTimestamp: (audio: { id: string; url: string; duration?: number }, timestamp: number, layerId?: string) => void;
   updateAudioTimestamp: (id: string, newTime: number, layerId?: string) => void;
   updateAudioClipTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId?: string) => void;
+  updateAudioClipDepth: (id: string, newDepth: number, layerId?: string) => void;
   removeAudioClip: (id: string, layerId?: string) => void;
   removeClipsByAudioId: (audioId: string) => void;
 
@@ -251,6 +252,35 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
               clips: l.clips.map((c) =>
                 c.id === id
                   ? { ...c, ...updates }
+                  : c
+              ),
+            }
+          : l
+      ),
+      isDirty: true,
+    }));
+  },
+
+  updateAudioClipDepth: (id, newDepth, layerId) => {
+    const { audioLayers } = get();
+
+    // Find the layer containing this clip
+    let targetLayer: AudioLayer | undefined;
+    if (layerId) {
+      targetLayer = audioLayers.find((l) => l.id === layerId);
+    } else {
+      targetLayer = audioLayers.find((l) => l.clips.some((c) => c.id === id));
+    }
+    if (!targetLayer) return;
+
+    set((state) => ({
+      audioLayers: state.audioLayers.map((l) =>
+        l.id === targetLayer!.id
+          ? {
+              ...l,
+              clips: l.clips.map((c) =>
+                c.id === id
+                  ? { ...c, depth: newDepth }
                   : c
               ),
             }

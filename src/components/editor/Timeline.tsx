@@ -15,7 +15,7 @@ interface TimelineProps {
   onUpdateTimestamp: (id: string, newTime: number) => void;
   onUpdateTrim?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   onRemove: (id: string) => void;
-  onUpdateAudioTimestamp?: (id: string, newTime: number, layerId?: string) => void;
+  onUpdateAudioTimestamp?: (id: string, newTime: number, layerId?: string, newDepth?: number) => void;
   onUpdateAudioTrim?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId?: string) => void;
   onRemoveAudio?: (id: string, layerId?: string) => void;
   onDropVideo?: (video: { id: string; url: string; duration?: number; timestamp: number }) => void;
@@ -36,14 +36,38 @@ const SNAP_INCREMENT = 0.05;
 const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) * SNAP_INCREMENT;
 
 // Helper function to calculate depth for overlapping clips
-function calculateClipDepths(clips: { id: string; timestamp: number; duration: number; trimStart?: number; trimEnd?: number }[]): Map<string, number> {
+function calculateClipDepths(clips: { id: string; timestamp: number; duration: number; trimStart?: number; trimEnd?: number; depth?: number }[]): Map<string, number> {
   const depthMap = new Map<string, number>();
 
-  // Sort clips by timestamp
-  const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
+  // First pass: assign explicit depths
+  const clipsWithExplicitDepth = clips.filter(c => c.depth !== undefined);
+  const clipsWithoutDepth = clips.filter(c => c.depth === undefined);
 
-  // Track the end times for each depth level
+  for (const clip of clipsWithExplicitDepth) {
+    depthMap.set(clip.id, clip.depth!);
+  }
+
+  // Second pass: auto-assign remaining clips to available depths
+  // Sort clips without explicit depth by timestamp
+  const sortedClips = [...clipsWithoutDepth].sort((a, b) => a.timestamp - b.timestamp);
+
+  // Track the end times for each depth level (including explicit clips)
   const depthEndTimes: number[] = [];
+
+  // Initialize depth end times from explicit depth clips
+  for (const clip of clipsWithExplicitDepth) {
+    const trimStart = clip.trimStart ?? 0;
+    const trimEnd = clip.trimEnd ?? 0;
+    const visibleDuration = clip.duration - trimStart - trimEnd;
+    const clipEnd = clip.timestamp + visibleDuration;
+    const d = clip.depth!;
+    // Ensure array is long enough
+    while (depthEndTimes.length <= d) {
+      depthEndTimes.push(0);
+    }
+    // Track the latest end time at this depth
+    depthEndTimes[d] = Math.max(depthEndTimes[d], clipEnd);
+  }
 
   for (const clip of sortedClips) {
     const trimStart = clip.trimStart ?? 0;
@@ -64,6 +88,10 @@ function calculateClipDepths(clips: { id: string; timestamp: number; duration: n
 
     // Assign the depth and update end time
     depthMap.set(clip.id, assignedDepth);
+    // Ensure array is long enough
+    while (depthEndTimes.length <= assignedDepth) {
+      depthEndTimes.push(0);
+    }
     depthEndTimes[assignedDepth] = clipEnd;
   }
 

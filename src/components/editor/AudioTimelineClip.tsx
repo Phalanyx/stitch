@@ -16,7 +16,7 @@ interface AudioTimelineClipProps {
   clip: AudioReference;
   layerId: string;
   pixelsPerSecond: number;
-  onUpdateTimestamp: (id: string, newTime: number, layerId: string) => void;
+  onUpdateTimestamp: (id: string, newTime: number, layerId: string, newDepth?: number) => void;
   onUpdateTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId: string) => void;
   onRemove: (id: string, layerId: string) => void;
   isSelected?: boolean;
@@ -42,7 +42,9 @@ export function AudioTimelineClip({
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const dragStartX = useRef(0);
+  const dragStartY = useRef(0);
   const initialTimestamp = useRef(0);
+  const initialDepth = useRef(0);
 
   const isPositionValid = useAudioTimelineStore((state) => state.isPositionValid);
 
@@ -71,9 +73,14 @@ export function AudioTimelineClip({
     e.preventDefault();
     setIsDragging(true);
     dragStartX.current = e.clientX;
+    dragStartY.current = e.clientY;
     initialTimestamp.current = clip.timestamp;
+    initialDepth.current = depth;
+
+    let currentDepth = depth;
 
     const handleMouseMove = (e: MouseEvent) => {
+      // Horizontal movement -> timestamp change
       const deltaX = e.clientX - dragStartX.current;
       const deltaTime = deltaX / pixelsPerSecond;
       const newTimestamp = snapToGrid(initialTimestamp.current + deltaTime);
@@ -82,7 +89,18 @@ export function AudioTimelineClip({
       const valid = isPositionValid(clip.id, newTimestamp, clip.duration, clip.trimStart, clip.trimEnd, layerId);
       setIsPositionInvalid(!valid);
 
-      onUpdateTimestamp(clip.id, newTimestamp, layerId);
+      // Vertical movement -> depth change
+      const deltaY = e.clientY - dragStartY.current;
+      const depthChange = Math.round(deltaY / (AUDIO_CLIP_HEIGHT + AUDIO_CLIP_GAP));
+      const newDepth = Math.max(0, initialDepth.current + depthChange);
+
+      // Update both timestamp and depth together
+      if (newDepth !== currentDepth) {
+        currentDepth = newDepth;
+        onUpdateTimestamp(clip.id, newTimestamp, layerId, newDepth);
+      } else {
+        onUpdateTimestamp(clip.id, newTimestamp, layerId);
+      }
     };
 
     const handleMouseUp = () => {

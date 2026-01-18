@@ -5,12 +5,13 @@ interface MoveAudioParams {
   clipId: string;
   layerId: string;
   newTimestamp: number;
+  newDepth?: number;  // Optional depth change
 }
 
 export function createMoveAudioCommand(params: MoveAudioParams): Command {
-  const { clipId, layerId, newTimestamp } = params;
+  const { clipId, layerId, newTimestamp, newDepth } = params;
 
-  // Capture original timestamp at command creation time
+  // Capture original timestamp and depth at command creation time
   const store = useAudioTimelineStore.getState();
   const layer = store.audioLayers.find((l) => l.id === layerId);
   const clip = layer?.clips.find((c) => c.id === clipId);
@@ -20,6 +21,7 @@ export function createMoveAudioCommand(params: MoveAudioParams): Command {
   }
 
   const originalTimestamp = clip.timestamp;
+  const originalDepth = clip.depth;
 
   return {
     id: crypto.randomUUID(),
@@ -35,7 +37,13 @@ export function createMoveAudioCommand(params: MoveAudioParams): Command {
             ? {
                 ...l,
                 clips: l.clips.map((c) =>
-                  c.id === clipId ? { ...c, timestamp: Math.max(0, newTimestamp) } : c
+                  c.id === clipId
+                    ? {
+                        ...c,
+                        timestamp: Math.max(0, newTimestamp),
+                        ...(newDepth !== undefined ? { depth: newDepth } : {}),
+                      }
+                    : c
                 ),
               }
             : l
@@ -52,7 +60,13 @@ export function createMoveAudioCommand(params: MoveAudioParams): Command {
             ? {
                 ...l,
                 clips: l.clips.map((c) =>
-                  c.id === clipId ? { ...c, timestamp: originalTimestamp } : c
+                  c.id === clipId
+                    ? {
+                        ...c,
+                        timestamp: originalTimestamp,
+                        depth: originalDepth,
+                      }
+                    : c
                 ),
               }
             : l

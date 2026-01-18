@@ -119,7 +119,7 @@ export function useTimeline() {
   );
 
   const updateAudioTimestamp = useCallback(
-    (id: string, newTime: number, layerId?: string) => {
+    (id: string, newTime: number, layerId?: string, newDepth?: number) => {
       const store = useAudioTimelineStore.getState();
       let targetLayerId = layerId;
       if (!targetLayerId) {
@@ -128,7 +128,12 @@ export function useTimeline() {
       }
       if (!targetLayerId) return;
 
-      const command = createMoveAudioCommand({ clipId: id, layerId: targetLayerId, newTimestamp: newTime });
+      const command = createMoveAudioCommand({
+        clipId: id,
+        layerId: targetLayerId,
+        newTimestamp: newTime,
+        newDepth,
+      });
       execute(command);
     },
     [execute]
