@@ -28,7 +28,7 @@ export type MemoryState = {
 
 export type ToolCall = {
   tool: string;
-  args: Record<string, JsonValue>;
+  args?: Record<string, JsonValue>;
   rationale?: string;
 };
 
@@ -55,6 +55,8 @@ export type OrchestratorContext = {
   memory: MemoryState;
   behavior: BehaviorState;
   userId?: string;
+  clips?: import('@/types/video').VideoReference[];
+  audioClips?: import('@/types/video').VideoReference[];
 };
 
 export type OrchestratorOutput = {

@@ -1,6 +1,6 @@
-import { callGeminiText, parseJsonFromText } from '@/lib/ai/gemini';
+import { summarizeTimeline } from '@/lib/tools/agentTools';
+import { listUploadedVideosForUser } from '@/lib/tools/videoMetadata';
 import { textToSpeechAndSave } from '@/lib/elevenlabs';
-import { getVideoMetadataForUser } from '@/lib/tools/videoMetadata';
 import { JsonValue, ToolRegistry } from './types';
 
 const errorResponse = (message: string): Record<string, JsonValue> => ({
@@ -11,76 +11,70 @@ const errorResponse = (message: string): Record<string, JsonValue> => ({
 
 export function createToolRegistry(): ToolRegistry {
   return {
-    getVideoMetadata: async (args, context) => {
-      const videoId = String(args.videoId ?? '');
-      if (!videoId) {
-        return errorResponse('Missing videoId.');
-      }
+    // Read-only tools
+    summarize_timeline: async (_args, context) => {
+      const clips = context.clips ?? [];
+      return {
+        status: 'ok',
+        changed: false,
+        output: summarizeTimeline(clips),
+      } as Record<string, JsonValue>;
+    },
+
+    list_clips: async (_args, context) => {
+      const clips = (context.clips ?? []).map((clip) => ({
+        clipId: clip.id,
+        videoId: clip.videoId ?? clip.id,
+        timestamp: clip.timestamp,
+        duration: clip.duration,
+      }));
+      return {
+        status: 'ok',
+        changed: false,
+        output: clips,
+      } as Record<string, JsonValue>;
+    },
+
+    list_audio: async (_args, context) => {
+      const audioClips = (context.audioClips ?? []).map((clip) => ({
+        clipId: clip.id,
+        timestamp: clip.timestamp,
+        duration: clip.duration,
+      }));
+      return {
+        status: 'ok',
+        changed: false,
+        output: audioClips,
+      } as Record<string, JsonValue>;
+    },
+
+    list_uploaded_videos: async (_args, context) => {
       if (!context.userId) {
         return errorResponse('Missing user context.');
       }
-      const metadata = await getVideoMetadataForUser(videoId, context.userId);
-      if (!metadata) {
-        return errorResponse(`No video metadata found for id ${videoId}.`);
-      }
+      const videos = await listUploadedVideosForUser(context.userId);
       return {
         status: 'ok',
         changed: false,
-        output: metadata,
+        output: videos,
       } as Record<string, JsonValue>;
     },
-    suggestTimelineTips: async (_args, context) => {
-      const aiText = await callGeminiText(
-        [
-          'You are a product assistant for a video editor.',
-          'Return JSON only: {"message":"..."}',
-          `Behavior phase: ${context.behavior.phase}.`,
-          `Event counts: ${JSON.stringify(context.behavior.eventCounts)}.`,
-          'Give one concise tip to help the user edit their timeline.',
-        ].join('\n')
-      );
 
-      const aiResult = parseJsonFromText<{ message?: string }>(aiText);
-      if (!aiResult?.message) {
-        return errorResponse('AI response missing message.');
-      }
-
-      return {
-        status: 'ok',
-        changed: false,
-        output: {
-          message: aiResult.message,
-          phase: context.behavior.phase,
-        },
-      } as Record<string, JsonValue>;
+    // Video modification tools (server-side - not yet implemented)
+    add_video: async (_args) => {
+      return errorResponse('Server-side add_video not implemented. Use client-side API.');
     },
-    surfaceExportHelp: async (_args, context) => {
-      const failures = context.behavior.eventCounts.export_failed ?? 0;
-      const aiText = await callGeminiText(
-        [
-          'You are an export helper for a video editor.',
-          'Return JSON only: {"message":"..."}',
-          `Behavior phase: ${context.behavior.phase}.`,
-          `Event counts: ${JSON.stringify(context.behavior.eventCounts)}.`,
-          'Provide one actionable suggestion for successful export.',
-        ].join('\n')
-      );
 
-      const aiResult = parseJsonFromText<{ message?: string }>(aiText);
-      if (!aiResult?.message) {
-        return errorResponse('AI response missing message.');
-      }
-
-      return {
-        status: 'ok',
-        changed: false,
-        output: {
-          failures,
-          message: aiResult.message,
-        },
-      } as Record<string, JsonValue>;
+    remove_video: async (_args) => {
+      return errorResponse('Server-side remove_video not implemented. Use client-side API.');
     },
-    createAudioFromText: async (args, context) => {
+
+    move_video: async (_args) => {
+      return errorResponse('Server-side move_video not implemented. Use client-side API.');
+    },
+
+    // Audio tools
+    create_audio_from_text: async (args, context) => {
       const text = String(args.text ?? '');
       if (!text) {
         return errorResponse('Missing text to convert to speech.');
@@ -114,6 +108,14 @@ export function createToolRegistry(): ToolRegistry {
           error instanceof Error ? error.message : 'Failed to generate audio.'
         );
       }
+    },
+
+    add_audio: async (_args) => {
+      return errorResponse('Server-side add_audio not implemented. Use client-side API.');
+    },
+
+    remove_audio: async (_args) => {
+      return errorResponse('Server-side remove_audio not implemented. Use client-side API.');
     },
   };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState, useCallback } from 'react';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 import { useHistoryStore } from '@/stores/historyStore';
@@ -36,25 +36,19 @@ export function useTimeline() {
   const { execute } = useHistoryStore();
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadSession() {
-      try {
-        const response = await fetch('/api/session');
-        if (response.ok) {
-          const data = await response.json();
-          const videoData = data.session_video as VideoReference[];
-          const audioData = data.session_audio as AudioReference[] | AudioLayer[];
-          setClips(videoData ?? []);
-          setAudioClips(audioData ?? []);
-        }
-      } catch (error) {
-        console.error('Failed to load session:', error);
-      } finally {
-        setIsLoading(false);
+  const loadSession = useCallback(async () => {
+    try {
+      const response = await fetch('/api/session');
+      if (response.ok) {
+        const data = await response.json();
+        const videoData = data.session_video as VideoReference[];
+        const audioData = data.session_audio as AudioReference[] | AudioLayer[];
+        setClips(videoData ?? []);
+        setAudioClips(audioData ?? []);
       }
+    } catch (error) {
+      console.error('Failed to load session:', error);
     }
-
-    loadSession();
   }, [setClips, setAudioClips]);
 
   // Video operations wrapped with commands
@@ -319,6 +313,15 @@ export function useTimeline() {
     [execute]
   );
 
+  useEffect(() => {
+    loadSession().finally(() => setIsLoading(false));
+  }, [loadSession]);
+
+  // Refetch timeline from server (useful after server-side modifications)
+  const refetch = useCallback(async () => {
+    await loadSession();
+  }, [loadSession]);
+
   return {
     clips,
     isLoading,
@@ -348,5 +351,7 @@ export function useTimeline() {
     batchDeleteSelected,
     copySelectedToClipboard,
     pasteFromClipboard,
+    // Refetch
+    refetch,
   };
 }

@@ -1,30 +1,15 @@
 import { callGeminiText, parseJsonFromText } from '@/lib/ai/gemini';
 import { BehaviorState, Plan, ToolCall } from './types';
+import { TOOL_DEFINITIONS } from '@/lib/tools/agentTools';
 
 function fallbackPlan(behavior: BehaviorState): Plan {
   const calls: ToolCall[] = [];
 
-  if (behavior.phase === 'editing') {
+  if (behavior.phase !== 'unknown') {
     calls.push({
-      tool: 'suggestTimelineTips',
+      tool: 'suggest_next_action',
       args: { phase: behavior.phase },
-      rationale: 'User is editing; provide contextual tips or shortcuts.',
-    });
-  }
-
-  if (behavior.phase === 'previewing') {
-    calls.push({
-      tool: 'surfaceExportHelp',
-      args: { phase: behavior.phase },
-      rationale: 'User is previewing; surface export or playback guidance.',
-    });
-  }
-
-  if (behavior.phase === 'exporting') {
-    calls.push({
-      tool: 'surfaceExportHelp',
-      args: { phase: behavior.phase },
-      rationale: 'User is exporting; catch errors or improve success rate.',
+      rationale: 'Provide a next-step suggestion based on the user phase.',
     });
   }
 
@@ -40,7 +25,7 @@ export async function planToolCalls(
     [
       'You are a planner that chooses which tools to call in order.',
       'Return JSON array only, each item: {"tool":"toolName","args":{...},"rationale":"..."}',
-      `Allowed tools: ${toolNames.join(', ')}`,
+      `Tools: ${JSON.stringify(TOOL_DEFINITIONS)}`,
       `User prompt: ${prompt}`,
       `Behavior summary: ${behavior.summary}`,
       `Behavior phase: ${behavior.phase}`,

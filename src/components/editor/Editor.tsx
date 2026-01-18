@@ -7,6 +7,7 @@ import { ChatAgent } from './ChatAgent';
 import { Timeline } from './Timeline';
 import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
+import { useBehaviorAgent } from '@/hooks/useBehaviorAgent';
 import { useVideoExport } from '@/hooks/useVideoExport';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { ExportProgressModal } from '@/components/ui/ExportProgressModal';
@@ -78,6 +79,8 @@ export function Editor() {
     batchDeleteSelected,
     copySelectedToClipboard,
     pasteFromClipboard,
+    // Refetch for server-side timeline modifications
+    refetch,
   } = useTimeline();
 
   // Enable auto-save
@@ -105,43 +108,6 @@ export function Editor() {
 
   // Video export
   const { exportToFile, isExporting, progress, error, reset } = useVideoExport();
-  const lastSentCount = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (isLoading) return;
-    if (lastSentCount.current === clips.length) return;
-    lastSentCount.current = clips.length;
-
-    const now = Date.now();
-    // Behavioral agent test only; not used for production outputs.
-    const events = [
-      { type: 'editor_opened', ts: now - 1000 },
-      ...clips.map((clip, index) => ({
-        type: 'clip_added',
-        ts: now - 900 + index * 50,
-        props: { id: clip.id },
-      })),
-    ];
-
-    fetch('/api/agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ events }),
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || `Request failed: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then((data) => {
-        console.log('Agent output', data);
-      })
-      .catch((error) => {
-        console.error('Agent test failed', error);
-      });
-  }, [clips, isLoading]);
 
   // State for audio created by the chat agent
   const [agentCreatedAudio, setAgentCreatedAudio] = useState<AudioMetadata | null>(null);
@@ -285,8 +251,35 @@ export function Editor() {
     addAudioAtTimestamp({ ...audio, duration }, timestamp);
   }, [addLayer, addAudioAtTimestamp]);
 
-  // Derive audioClips from audioLayers for ChatAgent
-  const audioClips = audioLayers.flatMap(layer => layer.clips);
+  // Derive audioClips from audioLayers for ChatAgent/agents
+  const audioClips = audioLayers.flatMap((layer) => layer.clips);
+  const { runAgent } = useBehaviorAgent(clips, audioClips);
+  const lastSentCount = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (lastSentCount.current === clips.length) return;
+    lastSentCount.current = clips.length;
+
+    const now = Date.now();
+    // Behavioral agent test only; not used for production outputs.
+    const events = [
+      { type: 'editor_opened', ts: now - 1000 },
+      ...clips.map((clip, index) => ({
+        type: 'clip_added',
+        ts: now - 900 + index * 50,
+        props: { id: clip.id },
+      })),
+    ];
+
+    runAgent(events)
+      .then((data) => {
+        console.log('Agent output', data);
+      })
+      .catch((error) => {
+        console.error('Agent test failed', error);
+      });
+  }, [clips, isLoading, runAgent]);
 
   if (isLoading) {
     return (
@@ -351,7 +344,12 @@ export function Editor() {
           onDropVideo={handleAddVideoWithAudio}
           isSeekingRef={isSeekingRef}
         />
-        <ChatAgent clips={clips} audioClips={audioClips} />
+        <ChatAgent
+          clips={clips}
+          audioClips={audioClips}
+          onAudioCreated={handleAudioCreated}
+          onTimelineChanged={refetch}
+        />
       </div>
       <Timeline
         clips={clips}
