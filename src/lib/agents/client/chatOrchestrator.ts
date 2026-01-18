@@ -18,6 +18,7 @@ type ChatOrchestratorInput = {
   toolResults?: ToolResult[];
   onAudioCreated?: (audio: AudioMetadata) => void;
   onTimelineChanged?: () => void;
+  memory?: Record<string, JsonValue>;
 };
 
 type ChatOrchestratorOutput = {
@@ -28,6 +29,14 @@ type ChatOrchestratorOutput = {
 export async function runChatOrchestrator(
   input: ChatOrchestratorInput
 ): Promise<ChatOrchestratorOutput> {
+  const memory = input.memory ?? {};
+  const rememberedName = typeof memory.name === 'string' ? memory.name : null;
+  if (rememberedName && /what'?s my name\??/i.test(input.message)) {
+    return {
+      response: `Your name is ${rememberedName}.`,
+      toolResults: input.toolResults ?? [],
+    };
+  }
   const tools = createClientToolRegistry({
     onAudioCreated: input.onAudioCreated,
   });
@@ -43,6 +52,7 @@ export async function runChatOrchestrator(
       toolList,
       '',
       `User request: ${input.message}`,
+      `Known user facts: ${JSON.stringify(memory)}`,
       `Timeline clip IDs: ${input.knownClipIds.join(', ') || 'none'}`,
       '',
       '=== CRITICAL: ID Types ===',
@@ -127,6 +137,7 @@ export async function runChatOrchestrator(
             'IMPORTANT: Respond with ONLY JSON: {"satisfied":true,"response":"..."} or {"satisfied":false}',
             '',
             `User request: ${input.message}`,
+            `Known user facts: ${JSON.stringify(memory)}`,
             `Actions performed: ${JSON.stringify(toolResults)}`,
             '',
             'IMPORTANT: The user request is NOT fulfilled if:',
@@ -178,6 +189,7 @@ export async function runChatOrchestrator(
             toolList,
             '',
             `User request: ${input.message}`,
+            `Known user facts: ${JSON.stringify(memory)}`,
             `Actions already performed: ${JSON.stringify(toolResults)}`,
             '',
             'Based on the results above, what is the NEXT action needed to fulfill the request?',
@@ -227,6 +239,7 @@ export async function runChatOrchestrator(
       'Respond naturally in 1-2 sentences.',
       '',
       `User said: ${input.message}`,
+      `Known user facts: ${JSON.stringify(memory)}`,
     ];
 
     if (hasErrors) {
