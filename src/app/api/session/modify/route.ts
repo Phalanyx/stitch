@@ -15,8 +15,8 @@ type ModifyRequest = {
   audioId?: string;
   clipId?: string;
   timestamp?: number;
-  trimStart?: number;
-  trimEnd?: number;
+  trimStart?: number;  // For add_video: seconds to trim from start of source video
+  trimEnd?: number;    // For add_video: seconds to trim from end of source video
   layerId?: string;
 };
 
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
   try {
     // Video operations
     if (operation === 'add_video') {
-      const { videoId, timestamp } = body;
+      const { videoId, timestamp, trimStart, trimEnd } = body;
       if (!videoId) {
         return errorResponse('Missing videoId for add_video operation');
       }
@@ -99,18 +99,29 @@ export async function POST(request: NextRequest) {
 
       // Generate a unique clip ID
       const clipId = crypto.randomUUID();
-      const duration = video.duration ?? 5;
+      const fullDuration = video.duration ?? 5;
 
-      // Create new clip
+      // Apply trim values (trimStart/trimEnd are seconds into the source video)
+      const clipTrimStart = trimStart ?? 0;
+      const clipTrimEnd = trimEnd !== undefined ? (fullDuration - trimEnd) : 0;
+      const effectiveDuration = fullDuration - clipTrimStart - clipTrimEnd;
+
+      if (effectiveDuration <= 0) {
+        return errorResponse('Invalid trim values: resulting clip duration would be <= 0');
+      }
+
+      // Create new clip with trim values
       const newClip: VideoReference = {
         id: clipId,
         videoId: video.id,
         url: video.url,
         timestamp: 0,
-        duration,
+        duration: fullDuration,
+        trimStart: clipTrimStart,
+        trimEnd: clipTrimEnd,
       };
 
-      // Determine position
+      // Determine position on timeline
       if (timestamp !== undefined) {
         newClip.timestamp = Math.max(0, timestamp);
       } else {
@@ -143,15 +154,29 @@ export async function POST(request: NextRequest) {
         }
 
         const audioClipId = crypto.randomUUID();
-        const audioDuration = video.audio.duration ?? duration;
+        const audioFullDuration = video.audio.duration ?? fullDuration;
+
+        // Apply same trim to audio (proportionally if durations differ)
+        const audioTrimStart = clipTrimStart;
+        const audioTrimEnd = trimEnd !== undefined ? (audioFullDuration - trimEnd) : 0;
 
         const newAudioClip: AudioReference = {
           id: audioClipId,
           audioId: video.audio.id,
           url: video.audio.url,
           timestamp: validTimestamp, // Same timestamp as video
-          duration: audioDuration,
+          duration: audioFullDuration,
+          trimStart: audioTrimStart,
+          trimEnd: audioTrimEnd,
         };
+
+        // Find valid position for audio (avoiding overlaps in audio layer)
+        const layerClips = sessionAudio[0].clips;
+        const validAudioTimestamp = findNearestValidPosition(
+          layerClips as TimelineClip[],
+          newAudioClip as TimelineClip
+        );
+        newAudioClip.timestamp = validAudioTimestamp;
 
         // Add to first audio layer
         sessionAudio = sessionAudio.map((layer, i) =>
@@ -160,9 +185,9 @@ export async function POST(request: NextRequest) {
             : layer
         );
 
-        message = `Added video and audio to timeline at ${validTimestamp.toFixed(1)}s`;
+        message = `Added video at ${validTimestamp.toFixed(1)}s and audio at ${validAudioTimestamp.toFixed(1)}s (clip: ${effectiveDuration.toFixed(1)}s)`;
       } else {
-        message = `Added video to timeline at ${validTimestamp.toFixed(1)}s`;
+        message = `Added video to timeline at ${validTimestamp.toFixed(1)}s (clip: ${effectiveDuration.toFixed(1)}s)`;
       }
     }
 

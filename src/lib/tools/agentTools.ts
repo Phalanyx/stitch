@@ -8,10 +8,10 @@ export const TOOL_DEFINITIONS = [
   { name: 'list_clips', description: 'List clips ON the timeline. Returns clipId (needed for remove/move), timestamp, duration. CALL THIS FIRST to delete or move clips.' },
   { name: 'list_audio', description: 'List audio clips on timeline with clipId, timestamp, duration.' },
   { name: 'list_uploaded_videos', description: 'List available source videos. Returns videoId (needed for add_video), name. CALL THIS to find videos to add.' },
-  { name: 'search_videos', description: 'Search indexed videos using natural language. Args: {query, searchOptions?: ["visual"|"audio"|"transcription"], limit?: number}. Returns matching clips with videoId, start/end times, rank.' },
+  { name: 'search_videos', description: 'Search indexed videos using natural language. Args: {query, searchOptions?: ["visual"|"audio"|"transcription"], limit?: number}. Returns clips with videoId, start, end, rank. Use start/end as trimStart/trimEnd in add_video.' },
 
   // Video modification tools
-  { name: 'add_video', description: 'Add a video TO the timeline. Args: {videoId (from list_uploaded_videos), timestamp?}.' },
+  { name: 'add_video', description: 'Add a video TO the timeline. Args: {videoId, timestamp?, trimStart?, trimEnd?}. For search results: pass start as trimStart, end as trimEnd to add just that clip segment.' },
   { name: 'remove_video', description: 'Remove a clip FROM the timeline. Args: {clipId (from list_clips)}. Call list_clips first to get clipId.' },
   { name: 'move_video', description: 'Move a clip to new position. Args: {clipId (from list_clips), timestamp}.' },
 
@@ -175,8 +175,11 @@ export function createClientToolRegistry(options?: {
       if (!videoId) {
         return errorOutput('Missing videoId argument.');
       }
-      const timestamp = args.timestamp !== undefined ? Number(args.timestamp) : undefined;
-      return modifyTimeline('add_video', { videoId, timestamp });
+      const params: Record<string, JsonValue> = { videoId };
+      if (args.timestamp !== undefined) params.timestamp = Number(args.timestamp);
+      if (args.trimStart !== undefined) params.trimStart = Number(args.trimStart);
+      if (args.trimEnd !== undefined) params.trimEnd = Number(args.trimEnd);
+      return modifyTimeline('add_video', params);
     },
 
     remove_video: async (args) => {
@@ -230,8 +233,9 @@ export function createClientToolRegistry(options?: {
       if (!audioId) {
         return errorOutput('Missing audioId argument.');
       }
-      const timestamp = args.timestamp !== undefined ? Number(args.timestamp) : undefined;
-      return modifyTimeline('add_audio', { audioId, timestamp });
+      const params: Record<string, JsonValue> = { audioId };
+      if (args.timestamp !== undefined) params.timestamp = Number(args.timestamp);
+      return modifyTimeline('add_audio', params);
     },
 
     remove_audio: async (args) => {
