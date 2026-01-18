@@ -8,6 +8,7 @@ export interface TimelineClip {
   duration: number;
   trimStart?: number;
   trimEnd?: number;
+  depth?: number;  // Vertical stacking depth (0 = bottom row)
 }
 
 export interface OverlapViolation {
@@ -69,9 +70,14 @@ export function findOverlappingClips(
 ): TimelineClip[] {
   const newStart = newClip.timestamp;
   const newEnd = getClipEndTime(newClip);
+  const newClipDepth = newClip.depth ?? 0;
 
   return clips.filter((clip) => {
     if (excludeId && clip.id === excludeId) return false;
+
+    // Only check clips at the same depth (undefined depth = depth 0)
+    const clipDepth = clip.depth ?? 0;
+    if (clipDepth !== newClipDepth) return false;
 
     const clipStart = clip.timestamp;
     const clipEnd = getClipEndTime(clip);
@@ -102,11 +108,14 @@ export function findNearestValidPosition(
 ): number {
   const requestedStart = newClip.timestamp;
   const clipDuration = getVisibleDuration(newClip);
+  const newClipDepth = newClip.depth ?? 0;
 
-  // Filter out the clip being moved if excludeId is provided
-  const otherClips = excludeId
-    ? clips.filter((c) => c.id !== excludeId)
-    : clips;
+  // Filter out the clip being moved and only consider clips at the same depth
+  const otherClips = clips.filter((c) => {
+    if (excludeId && c.id === excludeId) return false;
+    const clipDepth = c.depth ?? 0;
+    return clipDepth === newClipDepth;
+  });
 
   // If no other clips, return the requested position (but not less than 0)
   if (otherClips.length === 0) {
@@ -229,6 +238,11 @@ export function validateTrack(clips: TimelineClip[]): OverlapViolation[] {
       const clipA = clips[i];
       const clipB = clips[j];
 
+      // Only check for overlaps between clips at the same depth
+      const depthA = clipA.depth ?? 0;
+      const depthB = clipB.depth ?? 0;
+      if (depthA !== depthB) continue;
+
       const startA = clipA.timestamp;
       const endA = getClipEndTime(clipA);
       const startB = clipB.timestamp;
@@ -274,11 +288,14 @@ export function calculateAutoTrim(
 ): AutoTrimResult {
   const movingStart = movingClip.timestamp;
   const movingEnd = getClipEndTime(movingClip);
+  const movingDepth = movingClip.depth ?? 0;
 
-  // Filter out the clip being moved
-  const otherClips = excludeId
-    ? clips.filter((c) => c.id !== excludeId)
-    : clips;
+  // Filter out the clip being moved and only consider clips at the same depth
+  const otherClips = clips.filter((c) => {
+    if (excludeId && c.id === excludeId) return false;
+    const clipDepth = c.depth ?? 0;
+    return clipDepth === movingDepth;
+  });
 
   // Find a clip that the moving clip's START falls within
   // (i.e., movingStart is inside an existing clip's range)
@@ -380,9 +397,16 @@ export function getMaxTrimExtension(
   const clip = clips.find((c) => c.id === clipId);
   if (!clip) return 0;
 
-  const otherClips = clips.filter((c) => c.id !== clipId);
+  const clipDepth = clip.depth ?? 0;
+
+  // Filter to only consider clips at the same depth
+  const otherClips = clips.filter((c) => {
+    if (c.id === clipId) return false;
+    const otherDepth = c.depth ?? 0;
+    return otherDepth === clipDepth;
+  });
   if (otherClips.length === 0) {
-    // No other clips, can extend fully
+    // No other clips at this depth, can extend fully
     return side === 'left' ? clip.trimStart ?? 0 : clip.trimEnd ?? 0;
   }
 

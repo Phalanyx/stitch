@@ -147,32 +147,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-
-  // Step 4: Save video metadata to database via Prisma
-  const video = await prisma.video.create({
-    data: {
-      id: videoId,
-      userId: user.id,
-      url: publicUrl,
-      fileName: displayName,
-      duration: videoDuration,
-      twelveLabsTaskId,
-      twelveLabsStatus,
-      audioId,
-    },
-    include: { audio: true },
-  });
-
-  // Convert BigInt fileSize to number for JSON serialization
-  const serializedVideo = {
-    ...video,
-    audio: video.audio
-      ? {
-          ...video.audio,
-          fileSize: video.audio.fileSize ? Number(video.audio.fileSize) : null,
-        }
-      : null,
-  };
-
-  return NextResponse.json({ video: serializedVideo });
 }

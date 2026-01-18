@@ -62,25 +62,30 @@ export function Editor() {
     removeClip,
     // Audio handlers
     audioLayers,
-    activeLayerId,
     addAudioToTimeline,
     addAudioAtTimestamp,
     updateAudioTimestamp,
     updateAudioClipTrim,
     removeAudioClip,
-    // Layer management
-    addLayer,
-    removeLayer,
-    setActiveLayer,
+    toggleClipMute,
+    // Layer management (single track mode - only mute toggle needed)
     toggleLayerMute,
-    renameLayer,
-    cleanupEmptyLayers,
     // Batch operations
     batchDeleteSelected,
     copySelectedToClipboard,
     pasteFromClipboard,
     // Refetch for server-side timeline modifications
     refetch,
+    // Silent update methods (no history - visual only during drag)
+    updateVideoTimestampSilent,
+    updateAudioTimestampSilent,
+    updateClipTrimSilent,
+    updateAudioClipTrimSilent,
+    // Commit methods (single history entry for entire drag operation)
+    commitVideoMove,
+    commitAudioMove,
+    commitVideoTrim,
+    commitAudioTrim,
   } = useTimeline();
 
   // Enable auto-save
@@ -93,7 +98,11 @@ export function Editor() {
   const [currentTime, setCurrentTime] = useState(0);
   const isSeekingRef = useRef(false);
   const currentTimeRef = useRef(currentTime);
-  currentTimeRef.current = currentTime;
+  
+  // Update ref in effect to avoid side effects during render
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
 
   // Paste handler that uses current playhead position
   const handlePaste = useCallback(() => {
@@ -237,20 +246,6 @@ export function Editor() {
   const handleCloseExportModal = useCallback(() => {
     reset();
   }, [reset]);
-  const handleAddLayerWithAudio = useCallback(async (audio: { id: string; url: string; duration?: number }, timestamp: number) => {
-    // First add a new layer
-    addLayer();
-    // The new layer becomes active, so we can use addAudioAtTimestamp without specifying layerId
-    let duration = audio.duration;
-    if (!duration) {
-      try {
-        duration = await getAudioDuration(audio.url);
-      } catch (error) {
-        console.error('Failed to extract audio duration:', error);
-      }
-    }
-    addAudioAtTimestamp({ ...audio, duration }, timestamp);
-  }, [addLayer, addAudioAtTimestamp]);
 
   // Derive audioClips from audioLayers for ChatAgent/agents
   const audioClips = audioLayers.flatMap((layer) => layer.clips);
@@ -377,24 +372,26 @@ export function Editor() {
       <Timeline
         clips={clips}
         audioLayers={audioLayers}
-        activeLayerId={activeLayerId}
         onUpdateTimestamp={updateVideoTimestamp}
         onUpdateTrim={updateClipTrim}
         onRemove={removeClip}
         onUpdateAudioTimestamp={updateAudioTimestamp}
         onUpdateAudioTrim={updateAudioClipTrim}
         onRemoveAudio={removeAudioClip}
+        onToggleClipMute={toggleClipMute}
         onDropVideo={handleDropVideo}
         onDropAudio={handleDropAudio}
-        onSetActiveLayer={setActiveLayer}
-        onAddLayer={addLayer}
-        onRemoveLayer={removeLayer}
         onToggleLayerMute={toggleLayerMute}
-        onRenameLayer={renameLayer}
-        onCleanupEmptyLayers={cleanupEmptyLayers}
-        onAddLayerWithAudio={handleAddLayerWithAudio}
         currentTime={currentTime}
         onSeek={handleSeek}
+        onUpdateTimestampSilent={updateVideoTimestampSilent}
+        onUpdateTrimSilent={updateClipTrimSilent}
+        onUpdateAudioTimestampSilent={updateAudioTimestampSilent}
+        onUpdateAudioTrimSilent={updateAudioClipTrimSilent}
+        onCommitVideoMove={commitVideoMove}
+        onCommitAudioMove={commitAudioMove}
+        onCommitVideoTrim={commitVideoTrim}
+        onCommitAudioTrim={commitAudioTrim}
       />
 
       {/* Export Progress Modal */}

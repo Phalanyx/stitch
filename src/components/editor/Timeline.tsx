@@ -1,12 +1,18 @@
 'use client';
 
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { Film, Music, Plus, Volume2, VolumeX, Trash2 } from 'lucide-react';
+import { Film, Volume2, VolumeX } from 'lucide-react';
 import { TimelineClip } from './TimelineClip';
-import { AudioTimelineClip } from './AudioTimelineClip';
+import { AudioTimelineClip, AUDIO_CLIP_HEIGHT, AUDIO_CLIP_PADDING, AUDIO_CLIP_GAP } from './AudioTimelineClip';
 import { VideoReference } from '@/types/video';
 import { AudioLayer } from '@/types/audio';
 import { useSelectionStore, SelectedClip } from '@/stores/selectionStore';
+
+interface TrimState {
+  trimStart: number;
+  trimEnd: number;
+  timestamp: number;
+}
 
 interface TimelineProps {
   clips: VideoReference[];
@@ -15,32 +21,99 @@ interface TimelineProps {
   onUpdateTimestamp: (id: string, newTime: number) => void;
   onUpdateTrim?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   onRemove: (id: string) => void;
-  onUpdateAudioTimestamp?: (id: string, newTime: number, layerId?: string) => void;
+  onUpdateAudioTimestamp?: (id: string, newTime: number, layerId?: string, newDepth?: number) => void;
   onUpdateAudioTrim?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId?: string) => void;
   onRemoveAudio?: (id: string, layerId?: string) => void;
+  onToggleClipMute?: (id: string, layerId?: string) => void;
   onDropVideo?: (video: { id: string; url: string; duration?: number; timestamp: number }) => void;
   onDropAudio?: (audio: { id: string; url: string; duration?: number; timestamp: number }, layerId: string) => void;
-  onSetActiveLayer?: (layerId: string) => void;
-  onAddLayer?: () => void;
   onToggleLayerMute?: (layerId: string) => void;
-  onRenameLayer?: (layerId: string, name: string) => void;
-  onCleanupEmptyLayers?: () => void;
-  onAddLayerWithAudio?: (audio: { id: string; url: string; duration?: number }, timestamp: number) => void;
-  onRemoveLayer?: (layerId: string) => void;
   currentTime: number;
   onSeek: (time: number) => void;
+  // Silent update methods (no history - visual only during drag)
+  onUpdateTimestampSilent?: (id: string, newTime: number) => void;
+  onUpdateTrimSilent?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
+  onUpdateAudioTimestampSilent?: (id: string, newTime: number, layerId: string, newDepth?: number) => void;
+  onUpdateAudioTrimSilent?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId: string) => void;
+  // Commit methods (single history entry for entire drag operation)
+  onCommitVideoMove?: (id: string, initialTimestamp: number, finalTimestamp: number) => void;
+  onCommitAudioMove?: (id: string, layerId: string, initialTimestamp: number, finalTimestamp: number, initialDepth?: number, finalDepth?: number) => void;
+  onCommitVideoTrim?: (id: string, initialState: TrimState, finalState: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
+  onCommitAudioTrim?: (id: string, layerId: string, initialState: TrimState, finalState: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
 }
 
 const PIXELS_PER_SECOND = 50;
 const DEFAULT_TRACK_LABEL_WIDTH = 120;
 const MIN_TRACK_LABEL_WIDTH = 80;
 const MAX_TRACK_LABEL_WIDTH = 250;
-const AUDIO_TRACK_HEIGHT = 64; // h-16
+const MIN_AUDIO_TRACK_HEIGHT = 64; // Minimum height for audio track
 const VIDEO_TRACK_HEIGHT = 80; // h-20
 const TIME_MARKERS_HEIGHT = 24; // h-6
-const ADD_BUTTON_HEIGHT = 32; // h-8
 const SNAP_INCREMENT = 0.05;
 const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) * SNAP_INCREMENT;
+
+// Helper function to calculate depth for overlapping clips
+function calculateClipDepths(clips: { id: string; timestamp: number; duration: number; trimStart?: number; trimEnd?: number; depth?: number }[]): Map<string, number> {
+  const depthMap = new Map<string, number>();
+
+  // First pass: assign explicit depths
+  const clipsWithExplicitDepth = clips.filter(c => c.depth !== undefined);
+  const clipsWithoutDepth = clips.filter(c => c.depth === undefined);
+
+  for (const clip of clipsWithExplicitDepth) {
+    depthMap.set(clip.id, clip.depth!);
+  }
+
+  // Second pass: auto-assign remaining clips to available depths
+  // Sort clips without explicit depth by timestamp
+  const sortedClips = [...clipsWithoutDepth].sort((a, b) => a.timestamp - b.timestamp);
+
+  // Track the end times for each depth level (including explicit clips)
+  const depthEndTimes: number[] = [];
+
+  // Initialize depth end times from explicit depth clips
+  for (const clip of clipsWithExplicitDepth) {
+    const trimStart = clip.trimStart ?? 0;
+    const trimEnd = clip.trimEnd ?? 0;
+    const visibleDuration = clip.duration - trimStart - trimEnd;
+    const clipEnd = clip.timestamp + visibleDuration;
+    const d = clip.depth!;
+    // Ensure array is long enough
+    while (depthEndTimes.length <= d) {
+      depthEndTimes.push(0);
+    }
+    // Track the latest end time at this depth
+    depthEndTimes[d] = Math.max(depthEndTimes[d], clipEnd);
+  }
+
+  for (const clip of sortedClips) {
+    const trimStart = clip.trimStart ?? 0;
+    const trimEnd = clip.trimEnd ?? 0;
+    const visibleDuration = clip.duration - trimStart - trimEnd;
+    const clipStart = clip.timestamp;
+    const clipEnd = clipStart + visibleDuration;
+
+    // Find the lowest depth where this clip doesn't overlap
+    let assignedDepth = 0;
+    for (let d = 0; d < depthEndTimes.length; d++) {
+      if (depthEndTimes[d] <= clipStart) {
+        assignedDepth = d;
+        break;
+      }
+      assignedDepth = d + 1;
+    }
+
+    // Assign the depth and update end time
+    depthMap.set(clip.id, assignedDepth);
+    // Ensure array is long enough
+    while (depthEndTimes.length <= assignedDepth) {
+      depthEndTimes.push(0);
+    }
+    depthEndTimes[assignedDepth] = clipEnd;
+  }
+
+  return depthMap;
+}
 
 export function Timeline({
   clips = [],
@@ -52,36 +125,58 @@ export function Timeline({
   onUpdateAudioTimestamp,
   onUpdateAudioTrim,
   onRemoveAudio,
+  onToggleClipMute,
   onDropVideo,
   onDropAudio,
-  onSetActiveLayer,
-  onAddLayer,
   onToggleLayerMute,
-  onRenameLayer,
-  onCleanupEmptyLayers,
-  onAddLayerWithAudio,
-  onRemoveLayer,
   currentTime,
   onSeek,
+  onUpdateTimestampSilent,
+  onUpdateTrimSilent,
+  onUpdateAudioTimestampSilent,
+  onUpdateAudioTrimSilent,
+  onCommitVideoMove,
+  onCommitAudioMove,
+  onCommitVideoTrim,
+  onCommitAudioTrim,
 }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isDraggingOverVideo, setIsDraggingOverVideo] = useState(false);
-  const [isDraggingOverAudio, setIsDraggingOverAudio] = useState<Record<string, boolean>>({});
+  const [isDraggingOverAudio, setIsDraggingOverAudio] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
-  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
-  const [editingLayerName, setEditingLayerName] = useState('');
-  const [isDraggingOverNewTrack, setIsDraggingOverNewTrack] = useState(false);
   const [trackLabelWidth, setTrackLabelWidth] = useState(DEFAULT_TRACK_LABEL_WIDTH);
 
   // Selection store
-  const { selectedClips, selectClip, clearSelection, selectRange, lastSelectedId, isSelected } = useSelectionStore();
+  const { selectClip, clearSelection, selectRange, lastSelectedId, isSelected } = useSelectionStore();
   const [isResizingTrackLabel, setIsResizingTrackLabel] = useState(false);
 
-  // Calculate dynamic height based on number of audio layers (include add button row)
-  const tracksHeight = TIME_MARKERS_HEIGHT + VIDEO_TRACK_HEIGHT + (audioLayers.length * AUDIO_TRACK_HEIGHT);
-  const totalHeight = tracksHeight + ADD_BUTTON_HEIGHT;
+  // Get the single audio layer (there's only one in single track mode)
+  const audioLayer = audioLayers[0];
+  const audioClips = useMemo(() => audioLayer?.clips ?? [], [audioLayer]);
+
+  // Calculate depths for overlapping clips
+  const clipDepths = useMemo(() => calculateClipDepths(audioClips), [audioClips]);
+
+  // Calculate max depth to determine track height
+  const maxDepth = useMemo(() => {
+    let max = 0;
+    for (const depth of clipDepths.values()) {
+      if (depth > max) max = depth;
+    }
+    return max;
+  }, [clipDepths]);
+
+  // Calculate dynamic audio track height based on number of stacked clips
+  const audioTrackHeight = Math.max(
+    MIN_AUDIO_TRACK_HEIGHT,
+    AUDIO_CLIP_PADDING + (maxDepth + 1) * (AUDIO_CLIP_HEIGHT + AUDIO_CLIP_GAP) + AUDIO_CLIP_PADDING
+  );
+
+  // Calculate dynamic height for the timeline
+  const tracksHeight = TIME_MARKERS_HEIGHT + VIDEO_TRACK_HEIGHT + audioTrackHeight;
+  const totalHeight = tracksHeight;
 
   // Measure container width on mount and resize
   useEffect(() => {
@@ -178,86 +273,31 @@ export function Timeline({
     }
   };
 
-  const handleAudioDragOver = (layerId: string) => (e: React.DragEvent) => {
+  const handleAudioDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
-    setIsDraggingOverAudio((prev) => ({ ...prev, [layerId]: true }));
+    setIsDraggingOverAudio(true);
   };
 
-  const handleAudioDragLeave = (layerId: string) => () => {
-    setIsDraggingOverAudio((prev) => ({ ...prev, [layerId]: false }));
+  const handleAudioDragLeave = () => {
+    setIsDraggingOverAudio(false);
   };
 
-  const handleAudioDrop = (layerId: string) => (e: React.DragEvent) => {
+  const handleAudioDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDraggingOverAudio((prev) => ({ ...prev, [layerId]: false }));
+    setIsDraggingOverAudio(false);
+    if (!audioLayer) return;
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
       if (data.type === 'audio') {
         const rect = e.currentTarget.getBoundingClientRect();
         const dropX = e.clientX - rect.left;
         const timestamp = dropX / PIXELS_PER_SECOND;
-        onDropAudio?.({ ...data, timestamp }, layerId);
+        onDropAudio?.({ ...data, timestamp }, audioLayer.id);
       }
     } catch (err) {
       console.error('Failed to parse drop data:', err);
     }
-  };
-
-  const handleLayerNameDoubleClick = (layerId: string, currentName: string) => {
-    setEditingLayerId(layerId);
-    setEditingLayerName(currentName);
-  };
-
-  const handleLayerNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditingLayerName(e.target.value);
-  };
-
-  const handleLayerNameBlur = () => {
-    if (editingLayerId && editingLayerName.trim()) {
-      onRenameLayer?.(editingLayerId, editingLayerName.trim());
-    }
-    setEditingLayerId(null);
-    setEditingLayerName('');
-  };
-
-  const handleLayerNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleLayerNameBlur();
-    } else if (e.key === 'Escape') {
-      setEditingLayerId(null);
-      setEditingLayerName('');
-    }
-  };
-
-  const handleNewTrackDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    setIsDraggingOverNewTrack(true);
-  };
-
-  const handleNewTrackDragLeave = () => {
-    setIsDraggingOverNewTrack(false);
-  };
-
-  const handleNewTrackDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDraggingOverNewTrack(false);
-    try {
-      const data = JSON.parse(e.dataTransfer.getData('application/json'));
-      if (data.type === 'audio') {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const dropX = e.clientX - rect.left;
-        const timestamp = dropX / PIXELS_PER_SECOND;
-        onAddLayerWithAudio?.({ id: data.id, url: data.url, duration: data.duration }, timestamp);
-      }
-    } catch (err) {
-      console.error('Failed to parse drop data:', err);
-    }
-  };
-
-  const handleSetActiveLayer = (layerId: string) => {
-    onSetActiveLayer?.(layerId);
   };
 
   // Get all clips (video and audio) sorted by timestamp for range selection
@@ -284,7 +324,7 @@ export function Timeline({
         const rangeClips = allClipsSorted
           .slice(start, end + 1)
           .filter((c) => c.type === 'video')
-          .map(({ timestamp, ...clip }) => clip);
+          .map(({ timestamp: _timestamp, ...clip }) => clip);
         selectRange(rangeClips);
         return;
       }
@@ -305,7 +345,7 @@ export function Timeline({
         const rangeClips = allClipsSorted
           .slice(start, end + 1)
           .filter((c) => c.type === 'audio')
-          .map(({ timestamp, ...clip }) => clip);
+          .map(({ timestamp: _timestamp, ...clip }) => clip);
         selectRange(rangeClips);
         return;
       }
@@ -374,78 +414,27 @@ export function Timeline({
           <span className="text-xs text-gray-400">Video</span>
         </div>
 
-        {/* Audio track labels */}
-        {audioLayers.map((layer) => (
+        {/* Single audio track label */}
+        {audioLayer && (
           <div
-            key={layer.id}
-            className={`flex items-center px-1 border-b border-gray-700 gap-1 cursor-pointer ${
-              activeLayerId === layer.id ? 'bg-blue-900/30' : ''
-            }`}
-            style={{ height: `${AUDIO_TRACK_HEIGHT}px` }}
-            onClick={() => handleSetActiveLayer(layer.id)}
+            className="flex items-center px-1 border-b border-gray-700 gap-1 bg-blue-900/30'"
+            style={{ height: `${audioTrackHeight}px` }}
           >
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleLayerMute?.(layer.id);
+                onToggleLayerMute?.(audioLayer.id);
               }}
-              className={`p-1 rounded hover:bg-gray-700 flex-shrink-0 ${layer.muted ? 'text-red-400' : 'text-blue-400'}`}
-              title={layer.muted ? 'Unmute layer' : 'Mute layer'}
+              className={`p-1 rounded hover:bg-gray-700 flex-shrink-0 ${audioLayer.muted ? 'text-red-400' : 'text-violet-400'}`}
+              title={audioLayer.muted ? 'Unmute audio' : 'Mute audio'}
             >
-              {layer.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+              {audioLayer.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
             </button>
-            {audioLayers.length > 1 && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveLayer?.(layer.id);
-                }}
-                className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-red-400 flex-shrink-0"
-                title="Delete layer"
-              >
-                <Trash2 size={12} />
-              </button>
-            )}
-            {editingLayerId === layer.id ? (
-              <input
-                type="text"
-                value={editingLayerName}
-                onChange={handleLayerNameChange}
-                onBlur={handleLayerNameBlur}
-                onKeyDown={handleLayerNameKeyDown}
-                className="flex-1 text-xs bg-gray-800 text-white px-1 rounded-md border border-gray-600 focus:outline-none focus:border-green-500 min-w-0"
-                autoFocus
-              />
-            ) : (
-              <span
-                className={`text-xs truncate flex-1 min-w-0 ${layer.muted ? 'text-gray-500' : 'text-gray-400'}`}
-                onDoubleClick={() => handleLayerNameDoubleClick(layer.id, layer.name)}
-                title={`${layer.name} (double-click to rename)`}
-              >
-                {layer.name}
-              </span>
-            )}
+            <span className={`text-xs truncate flex-1 min-w-0 ${audioLayer.muted ? 'text-gray-500' : 'text-gray-400'}`}>
+              Audio
+            </span>
           </div>
-        ))}
-
-        {/* Add layer button row */}
-        <div
-          className={`flex items-center justify-center border-b border-gray-700 transition-colors ${
-            isDraggingOverNewTrack ? 'bg-blue-500/20' : ''
-          }`}
-          style={{ height: `${ADD_BUTTON_HEIGHT}px` }}
-          onDragOver={handleNewTrackDragOver}
-          onDragLeave={handleNewTrackDragLeave}
-          onDrop={handleNewTrackDrop}
-        >
-          <button
-            onClick={onAddLayer}
-            className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-blue-400"
-            title="Add audio layer"
-          >
-            <Plus size={14} />
-          </button>
-        </div>
+        )}
       </div>
 
       {/* Timeline content */}
@@ -511,60 +500,55 @@ export function Timeline({
                 onRemove={onRemove}
                 isSelected={isSelected(clip.id)}
                 onSelect={handleVideoSelect}
+                onUpdateTimestampSilent={onUpdateTimestampSilent}
+                onUpdateTrimSilent={onUpdateTrimSilent}
+                onCommitMove={onCommitVideoMove}
+                onCommitTrim={onCommitVideoTrim}
               />
             ))}
           </div>
 
-          {/* Audio tracks */}
-          {audioLayers.map((layer, index) => (
+          {/* Single audio track with stacked clips */}
+          {audioLayer && (
             <div
-              key={layer.id}
               className={`absolute left-0 right-0 border-b border-gray-700 transition-colors ${
-                isDraggingOverAudio[layer.id] ? 'bg-blue-500/20' : ''
-              } ${activeLayerId === layer.id ? 'bg-blue-900/10' : ''} ${
-                layer.muted ? 'opacity-50' : ''
+                isDraggingOverAudio ? 'bg-blue-500/20' : ''
+              } ${activeLayerId === audioLayer.id ? 'bg-blue-900/10' : ''} ${
+                audioLayer.muted ? 'opacity-50' : ''
               }`}
               style={{
-                top: `${TIME_MARKERS_HEIGHT + VIDEO_TRACK_HEIGHT + (index * AUDIO_TRACK_HEIGHT)}px`,
-                height: `${AUDIO_TRACK_HEIGHT}px`,
+                top: `${TIME_MARKERS_HEIGHT + VIDEO_TRACK_HEIGHT}px`,
+                height: `${audioTrackHeight}px`,
               }}
-              onDragOver={handleAudioDragOver(layer.id)}
-              onDragLeave={handleAudioDragLeave(layer.id)}
-              onDrop={handleAudioDrop(layer.id)}
+              onDragOver={handleAudioDragOver}
+              onDragLeave={handleAudioDragLeave}
+              onDrop={handleAudioDrop}
               onClick={() => {
                 clearSelection();
               }}
             >
-              {layer.clips.map((clip) => (
+              {audioClips.map((clip) => (
                 <AudioTimelineClip
                   key={clip.id}
                   clip={clip}
-                  layerClips={layer.clips}
-                  layerId={layer.id}
+                  layerClips={audioLayer.clips}
+                  layerId={audioLayer.id}
                   pixelsPerSecond={PIXELS_PER_SECOND}
                   onUpdateTimestamp={onUpdateAudioTimestamp!}
                   onUpdateTrim={onUpdateAudioTrim!}
                   onRemove={onRemoveAudio!}
+                  onToggleMute={onToggleClipMute}
                   isSelected={isSelected(clip.id)}
                   onSelect={handleAudioSelect}
+                  depth={clipDepths.get(clip.id) ?? 0}
+                  onUpdateTimestampSilent={onUpdateAudioTimestampSilent}
+                  onUpdateTrimSilent={onUpdateAudioTrimSilent}
+                  onCommitMove={onCommitAudioMove}
+                  onCommitTrim={onCommitAudioTrim}
                 />
               ))}
             </div>
-          ))}
-
-          {/* Drop zone row for adding new track with audio */}
-          <div
-            className={`absolute left-0 right-0 border-b border-gray-700 transition-colors ${
-              isDraggingOverNewTrack ? 'bg-blue-500/20' : ''
-            }`}
-            style={{
-              top: `${tracksHeight}px`,
-              height: `${ADD_BUTTON_HEIGHT}px`,
-            }}
-            onDragOver={handleNewTrackDragOver}
-            onDragLeave={handleNewTrackDragLeave}
-            onDrop={handleNewTrackDrop}
-          />
+          )}
         </div>
       </div>
 

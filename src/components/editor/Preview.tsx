@@ -36,11 +36,12 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
 
   const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
 
-  // Flatten unmuted audio layers into a single array for playback
+  // Flatten unmuted audio layers into a single array for playback, excluding muted clips
   const audioClips = useMemo(() => {
     return audioLayers
       .filter(layer => !layer.muted)
-      .flatMap(layer => layer.clips);
+      .flatMap(layer => layer.clips)
+      .filter(clip => !clip.muted);
   }, [audioLayers]);
 
   // Create/update audio elements for each audio clip
@@ -138,7 +139,7 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         audio.currentTime = trimStart;
       }
     });
-  }, [currentTime, isPlaying, audioClips]);
+  }, [currentTime, isPlaying, audioClips, isSeekingRef]);
 
   // Cleanup all audio on unmount
   useEffect(() => {

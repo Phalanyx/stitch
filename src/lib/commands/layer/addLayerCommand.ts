@@ -1,55 +1,27 @@
 import { Command, CommandType } from '../types';
-import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
-import { AudioLayer } from '@/types/audio';
 
 interface AddLayerParams {
   layerId: string;
   name: string;
 }
 
-export function createAddLayerCommand(params: AddLayerParams): Command {
-  const { layerId, name } = params;
-
+/**
+ * @deprecated Single audio track mode - layers are no longer supported.
+ * This command is a no-op and exists only for backwards compatibility.
+ */
+export function createAddLayerCommand(_params: AddLayerParams): Command {
   return {
     id: crypto.randomUUID(),
-    description: `Add audio layer`,
+    description: `Add audio layer (no-op)`,
     timestamp: Date.now(),
     type: 'layer:add' as CommandType,
 
     execute() {
-      const store = useAudioTimelineStore.getState();
-
-      const newLayer: AudioLayer = {
-        id: layerId,
-        name,
-        clips: [],
-        muted: false,
-      };
-
-      useAudioTimelineStore.setState({
-        audioLayers: [...store.audioLayers, newLayer],
-        activeLayerId: layerId,
-        isDirty: true,
-      });
+      // No-op: Single audio track mode - cannot add layers
     },
 
     undo() {
-      const store = useAudioTimelineStore.getState();
-      const newLayers = store.audioLayers.filter((l) => l.id !== layerId);
-
-      // Don't remove the last layer
-      if (newLayers.length === 0) return;
-
-      const newActiveLayerId =
-        store.activeLayerId === layerId
-          ? newLayers[0]?.id ?? null
-          : store.activeLayerId;
-
-      useAudioTimelineStore.setState({
-        audioLayers: newLayers,
-        activeLayerId: newActiveLayerId,
-        isDirty: true,
-      });
+      // No-op: Nothing to undo
     },
   };
 }

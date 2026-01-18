@@ -58,8 +58,8 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  let sessionVideo = (profile.sessionVideo ?? []) as VideoReference[];
-  let sessionAudio = (profile.sessionAudio ?? []) as AudioLayer[];
+  let sessionVideo = (profile.sessionVideo ?? []) as unknown as VideoReference[];
+  let sessionAudio = (profile.sessionAudio ?? []) as unknown as AudioLayer[];
 
   // Ensure sessionAudio is in the new layer format
   if (sessionAudio.length > 0 && !('clips' in sessionAudio[0])) {
@@ -509,8 +509,8 @@ export async function POST(request: NextRequest) {
     await prisma.profile.update({
       where: { id: user.id },
       data: {
-        sessionVideo: sessionVideo,
-        sessionAudio: sessionAudio,
+        sessionVideo: sessionVideo as unknown as any,
+        sessionAudio: sessionAudio as unknown as any,
       },
     });
 

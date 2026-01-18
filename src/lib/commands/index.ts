@@ -12,11 +12,17 @@ export { createAddAudioCommand } from './audio/addAudioCommand';
 export { createRemoveAudioCommand } from './audio/removeAudioCommand';
 export { createMoveAudioCommand } from './audio/moveAudioCommand';
 export { createTrimAudioCommand } from './audio/trimAudioCommand';
+export { createToggleClipMuteCommand } from './audio/toggleClipMuteCommand';
 
-// Layer commands
-export { createAddLayerCommand } from './layer/addLayerCommand';
-export { createRemoveLayerCommand } from './layer/removeLayerCommand';
+// Layer commands - mute toggle still works in single track mode
 export { createToggleMuteCommand } from './layer/toggleMuteCommand';
+
+// Deprecated layer commands (no-ops in single track mode)
+/** @deprecated Single audio track mode - this command is a no-op */
+export { createAddLayerCommand } from './layer/addLayerCommand';
+/** @deprecated Single audio track mode - this command is a no-op */
+export { createRemoveLayerCommand } from './layer/removeLayerCommand';
+/** @deprecated Single audio track mode - this command is a no-op */
 export { createRenameLayerCommand } from './layer/renameLayerCommand';
 
 // Batch commands
