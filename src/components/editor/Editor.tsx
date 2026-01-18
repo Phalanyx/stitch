@@ -11,7 +11,7 @@ import { useBehaviorAgent } from '@/hooks/useBehaviorAgent';
 import { useVideoExport } from '@/hooks/useVideoExport';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { ExportProgressModal } from '@/components/ui/ExportProgressModal';
-import { Loader2, Download, Upload } from 'lucide-react';
+import { Loader2, Download, Upload, MessageCircle } from 'lucide-react';
 
 import { AudioMetadata } from '@/types/audio';
 
@@ -121,6 +121,10 @@ export function Editor() {
 
   // State for audio created by the chat agent
   const [agentCreatedAudio, setAgentCreatedAudio] = useState<AudioMetadata | null>(null);
+
+  // Chat panel state
+  const [isChatOpen, setIsChatOpen] = useState(true);
+  const [chatWidth, setChatWidth] = useState(320);
 
   const handleAudioCreated = useCallback((audio: AudioMetadata) => {
     setAgentCreatedAudio(audio);
@@ -310,9 +314,10 @@ export function Editor() {
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
       {/* Top Navigation Bar */}
-      <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 px-4 py-3 flex justify-between items-center">
+      <div className="flex-shrink-0 bg-gray-900 border-b border-gray-700 px-4 py-3 flex justify-between items-center">
         {/* Left side - App title */}
-        <div className="flex items-center">
+        <div className="flex items-center gap-2">
+          <img src="/stitch.png" alt="Stitch logo" className="w-8 h-8 object-contain" />
           <h1 className="text-white font-semibold text-lg">Stitch</h1>
         </div>
 
@@ -338,7 +343,10 @@ export function Editor() {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div
+        className="flex-1 flex overflow-hidden transition-[margin] duration-300"
+        style={{ marginRight: isChatOpen ? chatWidth : 0 }}
+      >
         <Sidebar
           ref={sidebarRef}
           onAddToTimeline={handleAddVideoWithAudio}
@@ -361,12 +369,6 @@ export function Editor() {
           onRedo={redo}
           canUndo={canUndo}
           canRedo={canRedo}
-        />
-        <ChatAgent
-          clips={clips}
-          audioClips={audioClips}
-          onAudioCreated={handleAudioCreated}
-          onTimelineChanged={refetch}
         />
       </div>
       <Timeline
@@ -400,6 +402,28 @@ export function Editor() {
         isOpen={isExporting || (progress !== null && (progress.stage === 'complete' || progress.stage === 'error'))}
         onClose={handleCloseExportModal}
       />
+
+      {/* Chat Agent - Fixed position spanning full right side */}
+      <ChatAgent
+        clips={clips}
+        audioClips={audioClips}
+        onAudioCreated={handleAudioCreated}
+        onTimelineChanged={refetch}
+        isOpen={isChatOpen}
+        width={chatWidth}
+        onToggle={() => setIsChatOpen(!isChatOpen)}
+        onWidthChange={setChatWidth}
+      />
+      {/* Floating button to re-open chat when closed */}
+      {!isChatOpen && (
+        <button
+          onClick={() => setIsChatOpen(true)}
+          className="fixed right-4 bottom-48 p-3 bg-sky-600 hover:bg-sky-500 text-white rounded-full shadow-lg transition-colors z-50"
+          aria-label="Open chat"
+        >
+          <MessageCircle className="w-5 h-5" />
+        </button>
+      )}
     </div>
   );
 }

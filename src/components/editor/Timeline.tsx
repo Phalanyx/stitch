@@ -417,7 +417,7 @@ export function Timeline({
         {/* Single audio track label */}
         {audioLayer && (
           <div
-            className="flex items-center px-1 border-b border-gray-700 gap-1 bg-blue-900/30'"
+            className="flex items-center justify-center px-1 border-b border-gray-700 gap-1 bg-blue-900/30'"
             style={{ height: `${audioTrackHeight}px` }}
           >
             <button
@@ -430,7 +430,7 @@ export function Timeline({
             >
               {audioLayer.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
             </button>
-            <span className={`text-xs truncate flex-1 min-w-0 ${audioLayer.muted ? 'text-gray-500' : 'text-gray-400'}`}>
+            <span className={`text-xs truncate min-w-0 ${audioLayer.muted ? 'text-gray-500' : 'text-gray-400'}`}>
               Audio
             </span>
           </div>
@@ -446,7 +446,7 @@ export function Timeline({
         >
           {/* Time markers - clickable for seeking */}
           <div
-            className="absolute top-0 left-0 right-0 flex border-b border-gray-700 cursor-pointer"
+            className="absolute top-0 left-0 right-0 flex border-b border-gray-700 cursor-pointer select-none"
             style={{ height: `${TIME_MARKERS_HEIGHT}px` }}
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
