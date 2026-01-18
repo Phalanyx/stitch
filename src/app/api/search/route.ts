@@ -34,8 +34,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ results });
   } catch (error) {
     console.error('[Search API] Error:', error);
+
+    // Extract error message for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
     return NextResponse.json(
-      { error: 'Failed to search videos' },
+      {
+        error: 'Failed to search videos',
+        details: errorMessage
+      },
       { status: 500 }
     );
   }

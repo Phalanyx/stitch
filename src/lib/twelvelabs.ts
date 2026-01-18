@@ -273,35 +273,51 @@ export async function searchVideos(
   const searchOptions = options?.searchOptions ?? ['visual'];
   const limit = options?.limit ?? 10;
 
-  console.log(`[Twelve Labs] Searching for: "${query}" with options:`, searchOptions);
-
-  const response = await client.search.query({
-    indexId: INDEX_ID,
-    queryText: query,
-    searchOptions: searchOptions,
-  });
-
-  const results: VideoSearchResult[] = [];
-
-  // Collect results from the search response
-  for await (const clip of response) {
-    if (results.length >= limit) break;
-
-    // Skip clips without required data
-    if (!clip.videoId || clip.start === undefined || clip.end === undefined) {
-      continue;
-    }
-
-    results.push({
-      videoId: clip.videoId,
-      rank: clip.rank ?? 0,
-      start: clip.start,
-      end: clip.end,
-      thumbnailUrl: clip.thumbnailUrl,
-    });
+  // Validate search options - index only supports visual and audio
+  const validOptions: SearchOption[] = ['visual', 'audio'];
+  const invalidOptions = searchOptions.filter(opt => !validOptions.includes(opt));
+  if (invalidOptions.length > 0) {
+    console.warn(`[Twelve Labs] Ignoring unsupported search options: ${invalidOptions.join(', ')}`);
+  }
+  const filteredOptions = searchOptions.filter(opt => validOptions.includes(opt));
+  if (filteredOptions.length === 0) {
+    filteredOptions.push('visual'); // Default fallback
   }
 
-  console.log(`[Twelve Labs] Found ${results.length} matching clips`);
+  console.log(`[Twelve Labs] Searching for: "${query}" with options:`, filteredOptions);
 
-  return results;
+  try {
+    const response = await client.search.query({
+      indexId: INDEX_ID,
+      queryText: query,
+      searchOptions: filteredOptions,
+    });
+
+    const results: VideoSearchResult[] = [];
+
+    // Collect results from the search response
+    for await (const clip of response) {
+      if (results.length >= limit) break;
+
+      // Skip clips without required data
+      if (!clip.videoId || clip.start === undefined || clip.end === undefined) {
+        continue;
+      }
+
+      results.push({
+        videoId: clip.videoId,
+        rank: clip.rank ?? 0,
+        start: clip.start,
+        end: clip.end,
+        thumbnailUrl: clip.thumbnailUrl,
+      });
+    }
+
+    console.log(`[Twelve Labs] Found ${results.length} matching clips`);
+
+    return results;
+  } catch (error) {
+    console.error('[Twelve Labs] Search failed:', error);
+    throw error; // Re-throw with original error for better debugging
+  }
 }
