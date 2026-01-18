@@ -8,6 +8,12 @@ type ConversationMessage = {
   content: string;
 };
 
+type FeedbackInput = {
+  type: 'like' | 'dislike';
+  messageContent: string;
+  feedbackText?: string;
+};
+
 type ExtractedPreferences = {
   likes: string[];
   dislikes: string[];
@@ -23,10 +29,16 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const conversation = body.conversation as ConversationMessage[];
+  const conversation = body.conversation as ConversationMessage[] | undefined;
+  const feedback = body.feedback as FeedbackInput | undefined;
 
-  if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
-    return NextResponse.json({ error: 'No conversation provided' }, { status: 400 });
+  // Validate input - need either conversation or feedback
+  if (!conversation && !feedback) {
+    return NextResponse.json({ error: 'No conversation or feedback provided' }, { status: 400 });
+  }
+
+  if (conversation && (!Array.isArray(conversation) || conversation.length === 0)) {
+    return NextResponse.json({ error: 'Invalid conversation format' }, { status: 400 });
   }
 
   // Fetch existing preferences
@@ -52,11 +64,86 @@ export async function POST(request: NextRequest) {
   const existingDislikes = profile.userDislikes;
 
   // Build prompt for preference extraction
-  const conversationText = conversation
-    .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
-    .join('\n');
+  let prompt: string;
 
-  const prompt = `You are analyzing a conversation between a user and a video editing assistant.
+  if (feedback) {
+    // Feedback-specific prompt
+    const feedbackContext = feedback.feedbackText
+      ? `User feedback: "${feedback.feedbackText}"`
+      : 'No additional feedback text provided.';
+
+    if (feedback.type === 'like') {
+      prompt = `You are analyzing user feedback on a video editing assistant's response.
+The user LIKED this assistant response, indicating they appreciated the editing approach.
+
+Assistant response that was liked:
+"${feedback.messageContent}"
+
+${feedbackContext}
+
+Current saved preferences:
+Likes: ${existingLikes || 'None saved yet'}
+Dislikes: ${existingDislikes || 'None saved yet'}
+
+Based on this positive feedback, extract what video editing styles or approaches the user appreciates.
+Focus on:
+- Editing styles (fast-paced, slow, cinematic)
+- Transition types (smooth, abrupt, fade, cut)
+- Visual effects preferences
+- Audio preferences
+- Pacing and rhythm
+- Color grading preferences
+- Communication style preferences
+
+IMPORTANT:
+- Only extract NEW preferences that are not already in the saved preferences
+- Be concise - use short phrases, not sentences
+- Return valid JSON only
+
+Return JSON format:
+{"likes": ["preference1", "preference2"], "dislikes": []}
+
+If no new preferences can be extracted, return: {"likes": [], "dislikes": []}`;
+    } else {
+      prompt = `You are analyzing user feedback on a video editing assistant's response.
+The user DISLIKED this assistant response, indicating they want something different.
+
+Assistant response that was disliked:
+"${feedback.messageContent}"
+
+${feedbackContext}
+
+Current saved preferences:
+Likes: ${existingLikes || 'None saved yet'}
+Dislikes: ${existingDislikes || 'None saved yet'}
+
+Based on this negative feedback, extract what video editing styles or approaches the user wants to AVOID.
+Focus on:
+- Editing styles to avoid
+- Transition types to avoid
+- Visual effects to avoid
+- Audio approaches to avoid
+- Pacing issues
+- Color grading to avoid
+- Communication style issues
+
+IMPORTANT:
+- Only extract NEW preferences that are not already in the saved preferences
+- Be concise - use short phrases, not sentences
+- Return valid JSON only
+
+Return JSON format:
+{"likes": [], "dislikes": ["thing_to_avoid1", "thing_to_avoid2"]}
+
+If no new preferences can be extracted, return: {"likes": [], "dislikes": []}`;
+    }
+  } else {
+    // Conversation-based prompt (original logic)
+    const conversationText = conversation!
+      .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+      .join('\n');
+
+    prompt = `You are analyzing a conversation between a user and a video editing assistant.
 Extract any video editing preferences the user has expressed (likes and dislikes).
 
 Focus on video editing preferences such as:
@@ -84,6 +171,7 @@ Return JSON format:
 {"likes": ["preference1", "preference2"], "dislikes": ["preference1", "preference2"]}
 
 If no new preferences found, return: {"likes": [], "dislikes": []}`;
+  }
 
   try {
     const response = await callGeminiText(prompt);

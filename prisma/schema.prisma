@@ -50,3 +50,15 @@ model Audio {
   @@index([userId])
   @@map("audio")
 }
+
+model MessageFeedback {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  feedbackType   String   @map("feedback_type")
+  messageContent String   @map("message_content") @db.Text
+  feedbackText   String?  @map("feedback_text") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("message_feedback")
+}

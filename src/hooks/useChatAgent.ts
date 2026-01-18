@@ -3,10 +3,16 @@ import { runChatOrchestrator } from '@/lib/agents/client/chatOrchestrator';
 import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 
-type ChatMessage = {
+export type ChatMessage = {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
+  feedback?: 'like' | 'dislike';
 };
+
+function generateId(): string {
+  return crypto.randomUUID();
+}
 
 export function useChatAgent(
   clips: VideoReference[],
@@ -16,6 +22,7 @@ export function useChatAgent(
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
+      id: generateId(),
       role: 'assistant',
       content: 'Ask me about your timeline, clips, or what to do next.',
     },
@@ -41,10 +48,12 @@ export function useChatAgent(
     if (!trimmed || isSending) return;
     setIsSending(true);
 
-    const nextMessages: ChatMessage[] = [
-      ...messages,
-      { role: 'user', content: trimmed },
-    ];
+    const userMessage: ChatMessage = {
+      id: generateId(),
+      role: 'user',
+      content: trimmed,
+    };
+    const nextMessages: ChatMessage[] = [...messages, userMessage];
     setMessages(nextMessages);
     setInput('');
 
@@ -62,12 +71,17 @@ export function useChatAgent(
       });
       setMessages((current) => [
         ...current,
-        { role: 'assistant', content: response || 'Unable to generate a response.' },
+        {
+          id: generateId(),
+          role: 'assistant',
+          content: response || 'Unable to generate a response.',
+        },
       ]);
     } catch (error) {
       setMessages((current) => [
         ...current,
         {
+          id: generateId(),
           role: 'assistant',
           content:
             error instanceof Error ? error.message : 'Failed to reach chat agent.',
@@ -78,11 +92,23 @@ export function useChatAgent(
     }
   }, [audioRef, clipsRef, input, isSending, knownClipIds, messages]);
 
+  const markMessageFeedback = useCallback(
+    (messageId: string, feedbackType: 'like' | 'dislike') => {
+      setMessages((current) =>
+        current.map((msg) =>
+          msg.id === messageId ? { ...msg, feedback: feedbackType } : msg
+        )
+      );
+    },
+    []
+  );
+
   return {
     messages,
     input,
     setInput,
     isSending,
     sendMessage,
+    markMessageFeedback,
   };
 }
