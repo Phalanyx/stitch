@@ -9,8 +9,9 @@ import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useBehaviorAgent } from '@/hooks/useBehaviorAgent';
 import { useVideoExport } from '@/hooks/useVideoExport';
+import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { ExportProgressModal } from '@/components/ui/ExportProgressModal';
-import { Loader2, Download } from 'lucide-react';
+import { Loader2, Download, Undo2, Redo2 } from 'lucide-react';
 
 import { AudioMetadata } from '@/types/audio';
 
@@ -74,6 +75,10 @@ export function Editor() {
     toggleLayerMute,
     renameLayer,
     cleanupEmptyLayers,
+    // Batch operations
+    batchDeleteSelected,
+    copySelectedToClipboard,
+    pasteFromClipboard,
     // Refetch for server-side timeline modifications
     refetch,
   } = useTimeline();
@@ -81,14 +86,28 @@ export function Editor() {
   // Enable auto-save
   useAutoSave();
 
-  // Video export
-  const { exportToFile, isExporting, progress, error, reset } = useVideoExport();
-
-  // Playback state lifted from Preview
+  // Playback state lifted from Preview (moved up so we can use currentTimeRef)
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const isSeekingRef = useRef(false);
+  const currentTimeRef = useRef(currentTime);
+  currentTimeRef.current = currentTime;
+
+  // Paste handler that uses current playhead position
+  const handlePaste = useCallback(() => {
+    pasteFromClipboard(currentTimeRef.current);
+  }, [pasteFromClipboard]);
+
+  // Undo/Redo with keyboard shortcuts for copy/paste/delete
+  const { undo, redo, canUndo, canRedo } = useUndoRedo({
+    onBatchDelete: batchDeleteSelected,
+    onCopy: copySelectedToClipboard,
+    onPaste: handlePaste,
+  });
+
+  // Video export
+  const { exportToFile, isExporting, progress, error, reset } = useVideoExport();
 
   // State for audio created by the chat agent
   const [agentCreatedAudio, setAgentCreatedAudio] = useState<AudioMetadata | null>(null);
@@ -272,8 +291,29 @@ export function Editor() {
 
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
-      {/* Export Button */}
-      <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 px-4 py-2 flex justify-end">
+      {/* Toolbar */}
+      <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 px-4 py-2 flex justify-between items-center">
+        {/* Undo/Redo Buttons */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 disabled:text-gray-600 disabled:hover:bg-transparent disabled:cursor-not-allowed rounded transition-colors"
+            title="Undo (Cmd+Z)"
+          >
+            <Undo2 className="w-5 h-5" />
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 disabled:text-gray-600 disabled:hover:bg-transparent disabled:cursor-not-allowed rounded transition-colors"
+            title="Redo (Cmd+Shift+Z)"
+          >
+            <Redo2 className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Export Button */}
         <button
           onClick={handleExport}
           disabled={isExporting || clips.length === 0}
