@@ -10,7 +10,16 @@ sesionVideo time is  [ 0, 5.25, 12, 19.74999999999999, 155.55 ]
 
 Demo:
 
-Stitch is a web based video editing platform that uses AI to help you edit your videos.
+Stitch is a web based video editing platform that uses AI to help you edit your videos. Let's start by uploading a video. Uploading the video automatically indexes the video with Twelve Labs and Marengo. 
+
+While this is indexing, we can start exploring the features of Stitch. 
+One huge problem with video editing is that you often need to cut out interesting parts of a large video. For example, we have a large video of Caitlyn Clark's basketball highlights. We can use Stitch to cut out the interesting parts of the video.
+
+Let's take this a step further and add some Stephen Curry's highlights to the end of the video. However, the video does not have audio. We can use Stitch to add audio to the video as a narration using Eleven Labs.
+
+Another common problem with video editing is that you often need to add a transition between two clips. We can use Stitch to add a transition between two clips.
+
+Let's add a transition between the two clips to make the video more seamless using VEO 3.
 
 Features:
 - 
