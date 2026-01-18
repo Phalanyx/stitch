@@ -1,5 +1,5 @@
-import { findClip, summarizeTimeline, suggestNextAction } from '@/lib/tools/agentTools';
-import { getVideoMetadataForUser, listUploadedVideosForUser } from '@/lib/tools/videoMetadata';
+import { summarizeTimeline } from '@/lib/tools/agentTools';
+import { listUploadedVideosForUser } from '@/lib/tools/videoMetadata';
 import { textToSpeechAndSave } from '@/lib/elevenlabs';
 import { JsonValue, ToolRegistry } from './types';
 
@@ -11,6 +11,7 @@ const errorResponse = (message: string): Record<string, JsonValue> => ({
 
 export function createToolRegistry(): ToolRegistry {
   return {
+    // Read-only tools
     summarize_timeline: async (_args, context) => {
       const clips = context.clips ?? [];
       return {
@@ -19,71 +20,34 @@ export function createToolRegistry(): ToolRegistry {
         output: summarizeTimeline(clips),
       } as Record<string, JsonValue>;
     },
+
     list_clips: async (_args, context) => {
-      const clips = context.clips ?? [];
-      const userId = context.userId;
-      const enriched = await Promise.all(
-        clips.map(async (clip, index) => {
-          const videoId = clip.videoId ?? clip.id;
-          const metadata = userId
-            ? await getVideoMetadataForUser(videoId, userId)
-            : null;
-          return {
-            index: index + 1,
-            videoId,
-            timestamp: clip.timestamp,
-            duration: clip.duration,
-            metadata,
-          };
-        })
-      );
+      const clips = (context.clips ?? []).map((clip) => ({
+        clipId: clip.id,
+        videoId: clip.videoId ?? clip.id,
+        timestamp: clip.timestamp,
+        duration: clip.duration,
+      }));
       return {
         status: 'ok',
         changed: false,
-        output: enriched,
+        output: clips,
       } as Record<string, JsonValue>;
     },
-    find_clip: async (args, context) => {
-      const id = String(args.id ?? '');
-      if (!id) {
-        return errorResponse('Missing clip id.');
-      }
-      const metadata =
-        context.userId ? await getVideoMetadataForUser(id, context.userId) : null;
+
+    list_audio: async (_args, context) => {
+      const audioClips = (context.audioClips ?? []).map((clip) => ({
+        clipId: clip.id,
+        timestamp: clip.timestamp,
+        duration: clip.duration,
+      }));
       return {
         status: 'ok',
         changed: false,
-        output: {
-          details: findClip(context.clips ?? [], id),
-          metadata,
-        },
+        output: audioClips,
       } as Record<string, JsonValue>;
     },
-    suggest_next_action: async (_args, context) => {
-      return {
-        status: 'ok',
-        changed: false,
-        output: suggestNextAction(context.clips ?? [], context.audioClips ?? []),
-      } as Record<string, JsonValue>;
-    },
-    get_video_metadata: async (args, context) => {
-      const videoId = String(args.videoId ?? '');
-      if (!videoId) {
-        return errorResponse('Missing videoId.');
-      }
-      if (!context.userId) {
-        return errorResponse('Missing user context.');
-      }
-      const metadata = await getVideoMetadataForUser(videoId, context.userId);
-      if (!metadata) {
-        return errorResponse(`No video metadata found for id ${videoId}.`);
-      }
-      return {
-        status: 'ok',
-        changed: false,
-        output: metadata,
-      } as Record<string, JsonValue>;
-    },
+
     list_uploaded_videos: async (_args, context) => {
       if (!context.userId) {
         return errorResponse('Missing user context.');
@@ -95,7 +59,22 @@ export function createToolRegistry(): ToolRegistry {
         output: videos,
       } as Record<string, JsonValue>;
     },
-    createAudioFromText: async (args, context) => {
+
+    // Video modification tools (server-side - not yet implemented)
+    add_video: async (_args) => {
+      return errorResponse('Server-side add_video not implemented. Use client-side API.');
+    },
+
+    remove_video: async (_args) => {
+      return errorResponse('Server-side remove_video not implemented. Use client-side API.');
+    },
+
+    move_video: async (_args) => {
+      return errorResponse('Server-side move_video not implemented. Use client-side API.');
+    },
+
+    // Audio tools
+    create_audio_from_text: async (args, context) => {
       const text = String(args.text ?? '');
       if (!text) {
         return errorResponse('Missing text to convert to speech.');
@@ -129,6 +108,14 @@ export function createToolRegistry(): ToolRegistry {
           error instanceof Error ? error.message : 'Failed to generate audio.'
         );
       }
+    },
+
+    add_audio: async (_args) => {
+      return errorResponse('Server-side add_audio not implemented. Use client-side API.');
+    },
+
+    remove_audio: async (_args) => {
+      return errorResponse('Server-side remove_audio not implemented. Use client-side API.');
     },
   };
 }

@@ -10,13 +10,15 @@ interface ChatAgentProps {
   clips: VideoReference[];
   audioClips: VideoReference[];
   onAudioCreated?: (audio: AudioMetadata) => void;
+  onTimelineChanged?: () => void;
 }
 
-export function ChatAgent({ clips, audioClips, onAudioCreated }: ChatAgentProps) {
+export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged }: ChatAgentProps) {
   const { messages, input, setInput, isSending, sendMessage } = useChatAgent(
     clips,
     audioClips,
-    onAudioCreated
+    onAudioCreated,
+    onTimelineChanged
   );
   const scrollRef = useRef<HTMLDivElement>(null);
 

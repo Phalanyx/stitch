@@ -74,6 +74,8 @@ export function Editor() {
     toggleLayerMute,
     renameLayer,
     cleanupEmptyLayers,
+    // Refetch for server-side timeline modifications
+    refetch,
   } = useTimeline();
 
   // Enable auto-save
@@ -306,6 +308,7 @@ export function Editor() {
           clips={clips}
           audioClips={audioClips}
           onAudioCreated={handleAudioCreated}
+          onTimelineChanged={refetch}
         />
       </div>
       <Timeline

@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { runChatOrchestrator } from '@/lib/agents/client/chatOrchestrator';
-import { JsonValue } from '@/lib/agents/behaviorAgent/types';
 import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 
@@ -12,7 +11,8 @@ type ChatMessage = {
 export function useChatAgent(
   clips: VideoReference[],
   audioClips: VideoReference[],
-  onAudioCreated?: (audio: AudioMetadata) => void
+  onAudioCreated?: (audio: AudioMetadata) => void,
+  onTimelineChanged?: () => void
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -24,11 +24,12 @@ export function useChatAgent(
   const [isSending, setIsSending] = useState(false);
   const clipsRef = useRef(clips);
   const audioRef = useRef(audioClips);
-  const metadataCacheRef = useRef(new Map<string, JsonValue>());
   const onAudioCreatedRef = useRef(onAudioCreated);
+  const onTimelineChangedRef = useRef(onTimelineChanged);
   clipsRef.current = clips;
   audioRef.current = audioClips;
   onAudioCreatedRef.current = onAudioCreated;
+  onTimelineChangedRef.current = onTimelineChanged;
 
   const knownClipIds = useMemo(
     () => clips.map((clip) => clip.videoId ?? clip.id),
@@ -55,8 +56,8 @@ export function useChatAgent(
           clips: clipsRef.current,
           audioClips: audioRef.current,
         },
-        metadataCache: metadataCacheRef.current,
         onAudioCreated: onAudioCreatedRef.current,
+        onTimelineChanged: onTimelineChangedRef.current,
       });
       setMessages((current) => [
         ...current,
