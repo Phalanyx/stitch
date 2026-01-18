@@ -17,6 +17,8 @@ import {
 type TransitionRequest = {
   precedingUrl: string;
   succeedingUrl: string;
+  precedingTrimEnd?: number;
+  succeedingTrimStart?: number;
   prompt?: string;
   durationSeconds?: number;
 };
@@ -58,10 +60,12 @@ export async function POST(request: NextRequest) {
     await downloadFile(body.succeedingUrl, succeedingPath);
 
     const precedingDuration = await getVideoDuration(precedingPath);
-    const lastFrameTime = Math.max(precedingDuration - 0.05, 0);
+    const precedingTrimEnd = body.precedingTrimEnd ?? 0;
+    const lastFrameTime = Math.max(precedingDuration - precedingTrimEnd - 0.05, 0);
 
+    const succeedingTrimStart = body.succeedingTrimStart ?? 0;
     await extractFrameAtTime(precedingPath, lastFrameTime, lastFramePath);
-    await extractFrameAtTime(succeedingPath, 0, firstFramePath);
+    await extractFrameAtTime(succeedingPath, succeedingTrimStart, firstFramePath);
 
     const firstFrame = readImageAsGenAI(lastFramePath);
     const lastFrame = readImageAsGenAI(firstFramePath);

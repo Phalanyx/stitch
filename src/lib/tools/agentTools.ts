@@ -14,7 +14,7 @@ export const TOOL_DEFINITIONS = [
   { name: 'add_video', description: 'Add a video TO the timeline. Args: {videoId, timestamp?, trimStart?, trimEnd?}. For search results: pass start as trimStart, end as trimEnd to add just that clip segment.' },
   { name: 'remove_video', description: 'Remove a clip FROM the timeline. Args: {clipId (from list_clips)}. Call list_clips first to get clipId.' },
   { name: 'move_video', description: 'Move a clip to new position. Args: {clipId (from list_clips), timestamp}.' },
-  { name: 'create_transition', description: 'Generate a smooth transition between two adjacent timeline clips. Args: {precedingClipId, succeedingClipId, prompt?, durationSeconds?}. Call list_clips first to map positions to clipId.' },
+  { name: 'create_transition', description: 'Generate a smooth transition between two adjacent timeline clips. Args: {precedingPosition, succeedingPosition} (1-based positions from list_clips), plus optional prompt?, durationSeconds?. Call list_clips first to see clip positions.' },
 
   // Audio tools
   { name: 'create_audio_from_text', description: 'Generate speech audio from text. Args: {text}.' },
@@ -203,18 +203,31 @@ export function createClientToolRegistry(options?: {
     },
 
     create_transition: async (args, context) => {
-      const precedingClipId = String(args.precedingClipId ?? '');
-      const succeedingClipId = String(args.succeedingClipId ?? '');
-      if (!precedingClipId || !succeedingClipId) {
-        return errorOutput('Missing precedingClipId or succeedingClipId.');
+      const precedingPosition = Number(args.precedingPosition ?? 0);
+      const succeedingPosition = Number(args.succeedingPosition ?? 0);
+      if (!precedingPosition || !succeedingPosition) {
+        return errorOutput('Missing precedingPosition or succeedingPosition.');
       }
 
-      const preceding = context.clips.find((clip) => clip.id === precedingClipId);
-      const succeeding = context.clips.find((clip) => clip.id === succeedingClipId);
+      // Sort clips by timestamp for consistent position mapping
+      const sortedClips = [...context.clips].sort((a, b) => a.timestamp - b.timestamp);
 
-      if (!preceding || !succeeding) {
-        return errorOutput('Could not find both clips on the timeline.');
+      // Validate positions are within range
+      if (precedingPosition < 1 || precedingPosition > sortedClips.length) {
+        return errorOutput(`precedingPosition ${precedingPosition} is out of range (1-${sortedClips.length}).`);
       }
+      if (succeedingPosition < 1 || succeedingPosition > sortedClips.length) {
+        return errorOutput(`succeedingPosition ${succeedingPosition} is out of range (1-${sortedClips.length}).`);
+      }
+
+      // Validate positions are adjacent (consecutive)
+      if (succeedingPosition !== precedingPosition + 1) {
+        return errorOutput(`Positions must be adjacent. Got ${precedingPosition} and ${succeedingPosition}, expected consecutive positions.`);
+      }
+
+      // Look up clips by position (1-based to 0-based index)
+      const preceding = sortedClips[precedingPosition - 1];
+      const succeeding = sortedClips[succeedingPosition - 1];
 
       if (!preceding.url || !succeeding.url) {
         return errorOutput('Missing clip URLs for transition generation.');
@@ -228,12 +241,16 @@ export function createClientToolRegistry(options?: {
       );
       const insertTimestamp = preceding.timestamp + precedingVisible;
 
+      const succeedingTrimStart = succeeding.trimStart ?? 0;
+
       const response = await fetch('/api/transitions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           precedingUrl: preceding.url,
           succeedingUrl: succeeding.url,
+          precedingTrimEnd,
+          succeedingTrimStart,
           prompt: args.prompt,
           durationSeconds: args.durationSeconds,
         }),
