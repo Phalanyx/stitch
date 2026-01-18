@@ -7,6 +7,7 @@ import { ToolCall } from '@/lib/agents/client/types';
 export type ToolOptionsData = ToolOptionsPreview;
 
 export type ChatMessage = {
+  id: string;
   role: 'user' | 'assistant' | 'tool_options';
   content: string;
   feedback?: 'like' | 'dislike';
@@ -85,9 +86,8 @@ export function useChatAgent(
 
     // Filter out tool_options messages for conversation context
     const conversationMessages = nextMessages
-      .filter((m): m is { role: 'user' | 'assistant'; content: string } =>
-        m.role === 'user' || m.role === 'assistant'
-      );
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
     try {
       const result = await runChatOrchestrator({
@@ -102,9 +102,29 @@ export function useChatAgent(
         conversation: conversationMessages,
         showToolOptionsPreview,
       });
+
+      // Handle tool options preview - pause and show options to user
+      if (result.isPaused && result.toolOptionsPreview) {
+        setPendingSelection({
+          toolCall: result.toolOptionsPreview.pendingToolCall,
+          pendingPlan: result.toolOptionsPreview.pendingPlan,
+          originalMessage: trimmed,
+        });
+        setMessages((current) => [
+          ...current,
+          {
+            id: generateId(),
+            role: 'tool_options',
+            content: '',
+            toolOptions: result.toolOptionsPreview,
+          },
+        ]);
+        return;
+      }
+
       setMessages((current) => [
         ...current,
-        { role: 'assistant', content: response || 'Unable to generate a response.' },
+        { id: generateId(), role: 'assistant', content: result.response || 'Unable to generate a response.' },
       ]);
     } catch (error) {
       setMessages((current) => [
@@ -119,7 +139,79 @@ export function useChatAgent(
     } finally {
       setIsSending(false);
     }
-  }, [audioRef, clipsRef, input, isSending, knownClipIds, messages]);
+  }, [audioRef, clipsRef, input, isSending, knownClipIds, messages, showToolOptionsPreview]);
+
+  const selectToolOption = useCallback(async (selectedValue: string) => {
+    if (!pendingSelection) return;
+
+    setIsSending(true);
+    // Remove the tool_options message
+    setMessages((current) => current.filter((m) => m.role !== 'tool_options'));
+
+    try {
+      const result = await runChatOrchestrator({
+        message: pendingSelection.originalMessage,
+        knownClipIds,
+        context: {
+          clips: clipsRef.current,
+          audioClips: audioRef.current,
+        },
+        onAudioCreated: onAudioCreatedRef.current,
+        onTimelineChanged: onTimelineChangedRef.current,
+        conversation: messages
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        showToolOptionsPreview,
+        resumeWithSelection: {
+          toolCall: pendingSelection.toolCall,
+          selectedValue,
+          pendingPlan: pendingSelection.pendingPlan,
+        },
+      });
+
+      setMessages((current) => [
+        ...current,
+        { id: generateId(), role: 'assistant', content: result.response || 'Unable to generate a response.' },
+      ]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: generateId(),
+          role: 'assistant',
+          content: error instanceof Error ? error.message : 'Failed to complete selection.',
+        },
+      ]);
+    } finally {
+      setPendingSelection(null);
+      setIsSending(false);
+    }
+  }, [pendingSelection, knownClipIds, messages, showToolOptionsPreview]);
+
+  const cancelToolOptions = useCallback(() => {
+    // Remove the tool_options message
+    setMessages((current) => current.filter((m) => m.role !== 'tool_options'));
+    // Add cancellation message
+    setMessages((current) => [
+      ...current,
+      {
+        id: generateId(),
+        role: 'assistant',
+        content: 'Action cancelled. What would you like to do instead?',
+      },
+    ]);
+    setPendingSelection(null);
+  }, []);
+
+  const markMessageFeedback = useCallback((messageId: string, feedback: 'like' | 'dislike') => {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId ? { ...message, feedback } : message
+      )
+    );
+  }, []);
+
+  const hasPendingSelection = Boolean(pendingSelection);
 
   return {
     messages,
@@ -127,5 +219,9 @@ export function useChatAgent(
     setInput,
     isSending,
     sendMessage,
+    selectToolOption,
+    cancelToolOptions,
+    hasPendingSelection,
+    markMessageFeedback,
   };
 }

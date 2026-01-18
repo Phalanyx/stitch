@@ -70,6 +70,7 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
     selectToolOption,
     cancelToolOptions,
     hasPendingSelection,
+    markMessageFeedback,
   } = useChatAgent(
     clips,
     audioClips,
@@ -212,7 +213,7 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
               </div>
             </div>
           ) : message.role === 'tool_options' && message.toolOptions ? (
-            <div key={`${message.role}-${index}`} className="flex items-start gap-2">
+            <div key={message.id} className="flex items-start gap-2">
               <img
                 src="/stitch_icon.jpeg"
                 alt="Stitch"
