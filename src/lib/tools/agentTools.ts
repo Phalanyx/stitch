@@ -14,6 +14,7 @@ export const TOOL_DEFINITIONS = [
   { name: 'add_video', description: 'Add a video TO the timeline. Args: {videoId, timestamp?, trimStart?, trimEnd?}. For search results: pass start as trimStart, end as trimEnd to add just that clip segment.' },
   { name: 'remove_video', description: 'Remove a clip FROM the timeline. Args: {clipId (from list_clips)}. Call list_clips first to get clipId.' },
   { name: 'move_video', description: 'Move a clip to new position. Args: {clipId (from list_clips), timestamp}.' },
+  { name: 'create_transition', description: 'Generate a smooth transition between two adjacent timeline clips. Args: {precedingClipId, succeedingClipId, prompt?, durationSeconds?}. Call list_clips first to map positions to clipId.' },
 
   // Audio tools
   { name: 'create_audio_from_text', description: 'Generate speech audio from text. Args: {text}.' },
@@ -102,7 +103,8 @@ export function createClientToolRegistry(options?: {
     }),
 
     list_clips: async (_args, context) => {
-      const clips = context.clips.map((clip) => ({
+      const clips = context.clips.map((clip, index) => ({
+        index: index + 1,
         clipId: clip.id,
         videoId: clip.videoId ?? clip.id,
         timestamp: clip.timestamp,
@@ -198,6 +200,86 @@ export function createClientToolRegistry(options?: {
         return errorOutput('Missing clipId argument.');
       }
       return modifyTimeline('move_clip', { clipId, timestamp });
+    },
+
+    create_transition: async (args, context) => {
+      const precedingClipId = String(args.precedingClipId ?? '');
+      const succeedingClipId = String(args.succeedingClipId ?? '');
+      if (!precedingClipId || !succeedingClipId) {
+        return errorOutput('Missing precedingClipId or succeedingClipId.');
+      }
+
+      const preceding = context.clips.find((clip) => clip.id === precedingClipId);
+      const succeeding = context.clips.find((clip) => clip.id === succeedingClipId);
+
+      if (!preceding || !succeeding) {
+        return errorOutput('Could not find both clips on the timeline.');
+      }
+
+      if (!preceding.url || !succeeding.url) {
+        return errorOutput('Missing clip URLs for transition generation.');
+      }
+
+      const precedingTrimStart = preceding.trimStart ?? 0;
+      const precedingTrimEnd = preceding.trimEnd ?? 0;
+      const precedingVisible = Math.max(
+        preceding.duration - precedingTrimStart - precedingTrimEnd,
+        0
+      );
+      const insertTimestamp = preceding.timestamp + precedingVisible;
+
+      const response = await fetch('/api/transitions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          precedingUrl: preceding.url,
+          succeedingUrl: succeeding.url,
+          prompt: args.prompt,
+          durationSeconds: args.durationSeconds,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        videoId?: string;
+        url?: string;
+        duration?: number;
+        error?: string;
+      };
+
+      if (!response.ok || !data.videoId) {
+        return errorOutput(data.error || 'Failed to generate transition.');
+      }
+
+      const addResult = await modifyTimeline('add_video', {
+        videoId: data.videoId,
+        timestamp: insertTimestamp,
+      });
+      if (addResult.status === 'error') {
+        return addResult;
+      }
+
+      const shiftBy = Number(data.duration ?? 0);
+      if (shiftBy > 0) {
+        const moveResult = await modifyTimeline('move_clip', {
+          clipId: succeeding.id,
+          timestamp: succeeding.timestamp + shiftBy,
+        });
+        if (moveResult.status === 'error') {
+          return moveResult;
+        }
+      }
+
+      return {
+        status: 'ok',
+        changed: true,
+        output: {
+          transitionVideoId: data.videoId,
+          transitionUrl: data.url ?? null,
+          transitionDuration: data.duration ?? null,
+          insertedAt: insertTimestamp,
+          shiftedSucceedingTo: shiftBy > 0 ? succeeding.timestamp + shiftBy : null,
+        },
+      };
     },
 
     // Audio tools
