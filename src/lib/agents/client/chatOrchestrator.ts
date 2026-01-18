@@ -1,14 +1,24 @@
 import { parseJsonFromText } from '@/lib/ai/gemini';
 import { callChatLlm } from '@/lib/ai/chatLlmClient';
-import { TOOL_DEFINITIONS, createClientToolRegistry } from '@/lib/tools/agentTools';
+import { TOOL_DEFINITIONS, createClientToolRegistry, hasNLParameter, getNLParamInfo } from '@/lib/tools/agentTools';
 import { AgentContext, ToolCall, ToolResult } from './types';
 import { AudioMetadata } from '@/types/audio';
 import { JsonValue } from '@/lib/agents/behaviorAgent/types';
 import { runToolCall } from './toolRunner';
+import { generateVariations, ToolOptionVariation } from './generateVariations';
 
 type SatisfactionCheck = {
   satisfied: boolean;
   response?: string;
+};
+
+export type ToolOptionsPreview = {
+  toolName: string;
+  paramName: string;
+  originalIntent: string;
+  variations: ToolOptionVariation[];
+  pendingToolCall: ToolCall;
+  pendingPlan: ToolCall[];
 };
 
 type ChatOrchestratorInput = {
@@ -19,11 +29,19 @@ type ChatOrchestratorInput = {
   onAudioCreated?: (audio: AudioMetadata) => void;
   onTimelineChanged?: () => void;
   conversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  showToolOptionsPreview?: boolean;
+  resumeWithSelection?: {
+    toolCall: ToolCall;
+    selectedValue: string;
+    pendingPlan: ToolCall[];
+  };
 };
 
 type ChatOrchestratorOutput = {
   response: string;
   toolResults: ToolResult[];
+  toolOptionsPreview?: ToolOptionsPreview;
+  isPaused?: boolean;
 };
 
 export async function runChatOrchestrator(
@@ -35,6 +53,32 @@ export async function runChatOrchestrator(
     conversation,
   });
   const toolList = TOOL_DEFINITIONS.map(t => `- ${t.name}: ${t.description}`).join('\n');
+
+  // Handle resumption with selected value
+  if (input.resumeWithSelection) {
+    const { toolCall, selectedValue, pendingPlan } = input.resumeWithSelection;
+    const nlInfo = getNLParamInfo(toolCall.tool);
+
+    if (nlInfo) {
+      // Update the tool call with the selected value
+      const updatedToolCall: ToolCall = {
+        ...toolCall,
+        args: {
+          ...toolCall.args,
+          [nlInfo.paramName]: selectedValue,
+        },
+      };
+
+      // Execute with the updated plan
+      return executeToolPlan(
+        [updatedToolCall, ...pendingPlan],
+        tools,
+        input,
+        conversation,
+        toolList
+      );
+    }
+  }
 
   const planText = await callChatLlm(
     [
@@ -96,6 +140,51 @@ export async function runChatOrchestrator(
         args: call.args ?? {},
       })) ?? [];
 
+  // Check if we should show tool options preview for the first NL tool in the plan
+  if (input.showToolOptionsPreview && plan.length > 0) {
+    const firstNLToolIndex = plan.findIndex(call => hasNLParameter(call.tool));
+    if (firstNLToolIndex !== -1) {
+      const nlToolCall = plan[firstNLToolIndex];
+      const nlInfo = getNLParamInfo(nlToolCall.tool);
+
+      if (nlInfo) {
+        const originalValue = String(nlToolCall.args?.[nlInfo.paramName] ?? '');
+        if (originalValue) {
+          console.log('[ChatOrchestrator] Generating variations for:', nlToolCall.tool, nlInfo.paramName);
+
+          const variations = await generateVariations(nlToolCall, input.message, conversation);
+
+          // Return paused state with variations
+          return {
+            response: '',
+            toolResults: [],
+            isPaused: true,
+            toolOptionsPreview: {
+              toolName: nlToolCall.tool,
+              paramName: nlInfo.paramName,
+              originalIntent: input.message,
+              variations,
+              pendingToolCall: nlToolCall,
+              pendingPlan: plan.slice(firstNLToolIndex + 1),
+            },
+          };
+        }
+      }
+    }
+  }
+
+  // Execute the plan normally
+  return executeToolPlan(plan, tools, input, conversation, toolList);
+}
+
+// Extracted execution logic for reuse in normal and resumed execution
+async function executeToolPlan(
+  initialPlan: ToolCall[],
+  tools: ReturnType<typeof createClientToolRegistry>,
+  input: ChatOrchestratorInput,
+  conversation: Array<{ role: 'user' | 'assistant'; content: string }>,
+  toolList: string
+): Promise<ChatOrchestratorOutput> {
   const toolResults: ToolResult[] = input.toolResults ?? [];
   let satisfied = false;
   let finalResponse = '';
@@ -105,7 +194,7 @@ export async function runChatOrchestrator(
   const readOnlyTools = ['summarize_timeline', 'list_clips', 'list_audio', 'list_uploaded_videos'];
 
   // Re-planning loop (max 3 iterations to prevent infinite loops)
-  let currentPlan = plan;
+  let currentPlan = initialPlan;
   for (let iteration = 0; iteration < 3 && !satisfied; iteration++) {
     console.log(`[ChatOrchestrator] Iteration ${iteration}, plan:`, JSON.stringify(currentPlan));
 

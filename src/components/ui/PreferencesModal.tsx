@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Heart, HeartOff, Loader2 } from 'lucide-react';
+import { X, Heart, HeartOff, Loader2, Settings2 } from 'lucide-react';
 
 interface PreferencesModalProps {
   isOpen: boolean;
@@ -11,6 +11,7 @@ interface PreferencesModalProps {
 export function PreferencesModal({ isOpen, onClose }: PreferencesModalProps) {
   const [likes, setLikes] = useState('');
   const [dislikes, setDislikes] = useState('');
+  const [showToolOptionsPreview, setShowToolOptionsPreview] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -18,10 +19,19 @@ export function PreferencesModal({ isOpen, onClose }: PreferencesModalProps) {
     if (isOpen) {
       setIsLoading(true);
       fetch('/api/preferences')
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`HTTP error: ${res.status}`);
+          }
+          return res.json();
+        })
         .then((data) => {
+          if (data.error) {
+            throw new Error(data.error);
+          }
           setLikes(data.userLikes || '');
           setDislikes(data.userDislikes || '');
+          setShowToolOptionsPreview(data.showToolOptionsPreview || false);
         })
         .catch((err) => {
           console.error('Failed to fetch preferences:', err);
@@ -38,7 +48,11 @@ export function PreferencesModal({ isOpen, onClose }: PreferencesModalProps) {
       const response = await fetch('/api/preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userLikes: likes, userDislikes: dislikes }),
+        body: JSON.stringify({
+          userLikes: likes,
+          userDislikes: dislikes,
+          showToolOptionsPreview,
+        }),
       });
       if (response.ok) {
         onClose();
@@ -103,6 +117,40 @@ export function PreferencesModal({ isOpen, onClose }: PreferencesModalProps) {
                 placeholder="e.g., abrupt cuts, shaky footage, overused effects..."
                 className="w-full h-24 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm placeholder-gray-500 focus:outline-none focus:border-sky-500 resize-none"
               />
+            </div>
+
+            {/* Tool Options Preview Toggle */}
+            <div className="border-t border-gray-700 pt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-gray-700 flex items-center justify-center text-sky-400 flex-shrink-0">
+                    <Settings2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-white">
+                      Show tool options before executing
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      Preview and choose from multiple query variations before search or generation runs
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={showToolOptionsPreview}
+                  onClick={() => setShowToolOptionsPreview(!showToolOptionsPreview)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-gray-800 ${
+                    showToolOptionsPreview ? 'bg-sky-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      showToolOptionsPreview ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
           </div>
         )}
