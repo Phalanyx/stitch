@@ -4,6 +4,8 @@ import {
   findNearestValidPosition,
   isPositionValid as checkPositionValid,
   getValidPosition as computeValidPosition,
+  calculateAutoTrim,
+  isPositionValidOrAutoTrimmable,
   TimelineClip,
 } from '@/lib/timeline-validation';
 
@@ -15,6 +17,7 @@ interface TimelineState {
   addVideoToTimeline: (video: { id: string; url: string; duration?: number }) => void;
   addVideoAtTimestamp: (video: { id: string; url: string; duration?: number }, timestamp: number) => void;
   updateVideoTimestamp: (id: string, newTime: number) => void;
+  updateVideoTimestampWithAutoTrim: (id: string, newTime: number) => void;
   updateClipTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
   removeClip: (id: string) => void;
   removeClipsByVideoId: (videoId: string) => void;
@@ -22,6 +25,7 @@ interface TimelineState {
   markSaved: () => void;
   // Overlap validation helpers
   isPositionValid: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number) => boolean;
+  isPositionValidOrAutoTrimmable: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number) => boolean;
   getValidPosition: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number) => number;
 }
 
@@ -128,6 +132,56 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     }));
   },
 
+  updateVideoTimestampWithAutoTrim: (id, newTime) => {
+    const { clips } = get();
+    const clip = clips.find((c) => c.id === id);
+    if (!clip) return;
+
+    const testClip: TimelineClip = {
+      id,
+      timestamp: Math.max(0, newTime),
+      duration: clip.duration,
+      trimStart: clip.trimStart,
+      trimEnd: clip.trimEnd,
+    };
+
+    // Check if auto-trim can resolve any overlap
+    const autoTrimResult = calculateAutoTrim(clips as TimelineClip[], testClip, id);
+
+    if (autoTrimResult.isValid && autoTrimResult.clipToTrim) {
+      // Apply auto-trim: update both the moved clip and the trimmed clip
+      set((state) => ({
+        clips: state.clips.map((c) => {
+          if (c.id === id) {
+            return { ...c, timestamp: testClip.timestamp };
+          }
+          if (c.id === autoTrimResult.clipToTrim) {
+            return { ...c, trimEnd: autoTrimResult.newTrimEnd };
+          }
+          return c;
+        }),
+        isDirty: true,
+      }));
+    } else if (autoTrimResult.isValid) {
+      // No overlap, just update position
+      set((state) => ({
+        clips: state.clips.map((c) =>
+          c.id === id ? { ...c, timestamp: testClip.timestamp } : c
+        ),
+        isDirty: true,
+      }));
+    } else {
+      // Invalid position, fall back to nearest valid position
+      const validTimestamp = findNearestValidPosition(clips as TimelineClip[], testClip, id);
+      set((state) => ({
+        clips: state.clips.map((c) =>
+          c.id === id ? { ...c, timestamp: validTimestamp } : c
+        ),
+        isDirty: true,
+      }));
+    }
+  },
+
   updateClipTrim: (id, updates) => {
     const { clips } = get();
     const clip = clips.find((c) => c.id === id);
@@ -184,6 +238,18 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   isPositionValid: (clipId, timestamp, duration, trimStart, trimEnd) => {
     const { clips } = get();
     return checkPositionValid(clips as TimelineClip[], clipId, timestamp, duration, trimStart, trimEnd);
+  },
+
+  isPositionValidOrAutoTrimmable: (clipId, timestamp, duration, trimStart, trimEnd) => {
+    const { clips } = get();
+    const testClip: TimelineClip = {
+      id: clipId,
+      timestamp,
+      duration,
+      trimStart,
+      trimEnd,
+    };
+    return isPositionValidOrAutoTrimmable(clips as TimelineClip[], testClip, clipId);
   },
 
   getValidPosition: (clipId, timestamp, duration, trimStart, trimEnd) => {

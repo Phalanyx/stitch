@@ -4,12 +4,14 @@ import { useRef, useState, useEffect } from 'react';
 import { X, Music } from 'lucide-react';
 import { AudioReference } from '@/types/audio';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
+import { getMaxTrimExtension, TimelineClip as TimelineClipType } from '@/lib/timeline-validation';
 
 const SNAP_INCREMENT = 0.05;
 const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) * SNAP_INCREMENT;
 
 interface AudioTimelineClipProps {
   clip: AudioReference;
+  layerClips: AudioReference[];
   layerId: string;
   pixelsPerSecond: number;
   onUpdateTimestamp: (id: string, newTime: number, layerId: string) => void;
@@ -21,6 +23,7 @@ interface AudioTimelineClipProps {
 
 export function AudioTimelineClip({
   clip,
+  layerClips,
   layerId,
   pixelsPerSecond,
   onUpdateTimestamp,
@@ -37,8 +40,10 @@ export function AudioTimelineClip({
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const dragStartX = useRef(0);
   const initialTimestamp = useRef(0);
+  const pendingTimestamp = useRef(0);
 
-  const isPositionValid = useAudioTimelineStore((state) => state.isPositionValid);
+  const isPositionValidOrAutoTrimmable = useAudioTimelineStore((state) => state.isPositionValidOrAutoTrimmable);
+  const updateAudioTimestampWithAutoTrim = useAudioTimelineStore((state) => state.updateAudioTimestampWithAutoTrim);
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -66,14 +71,18 @@ export function AudioTimelineClip({
     setIsDragging(true);
     dragStartX.current = e.clientX;
     initialTimestamp.current = clip.timestamp;
+    pendingTimestamp.current = clip.timestamp;
 
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - dragStartX.current;
       const deltaTime = deltaX / pixelsPerSecond;
-      const newTimestamp = snapToGrid(initialTimestamp.current + deltaTime);
+      const newTimestamp = snapToGrid(Math.max(0, initialTimestamp.current + deltaTime));
 
-      // Check if the position would be valid within this layer
-      const valid = isPositionValid(clip.id, newTimestamp, clip.duration, clip.trimStart, clip.trimEnd, layerId);
+      // Store the pending timestamp for auto-trim on release
+      pendingTimestamp.current = newTimestamp;
+
+      // Check if the position would be valid within this layer (including auto-trim resolution)
+      const valid = isPositionValidOrAutoTrimmable(clip.id, newTimestamp, clip.duration, layerId, clip.trimStart, clip.trimEnd);
       setIsPositionInvalid(!valid);
 
       onUpdateTimestamp(clip.id, newTimestamp, layerId);
@@ -82,6 +91,8 @@ export function AudioTimelineClip({
     const handleMouseUp = () => {
       setIsDragging(false);
       setIsPositionInvalid(false);
+      // Apply auto-trim if needed on release
+      updateAudioTimestampWithAutoTrim(clip.id, pendingTimestamp.current, layerId);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
@@ -99,13 +110,25 @@ export function AudioTimelineClip({
     const startTrimStart = clip.trimStart ?? 0;
     const startTimestamp = clip.timestamp;
 
+    // Calculate max extension based on adjacent clips in this layer
+    const timelineClips: TimelineClipType[] = layerClips.map((c) => ({
+      id: c.id,
+      timestamp: c.timestamp,
+      duration: c.duration,
+      trimStart: c.trimStart,
+      trimEnd: c.trimEnd,
+    }));
+    const maxExtension = getMaxTrimExtension(timelineClips, clip.id, 'left');
+
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - startX;
       const deltaTime = deltaX / pixelsPerSecond;
 
-      const newTrimStart = Math.max(0, startTrimStart + deltaTime);
+      const newTrimStart = startTrimStart + deltaTime;
+      // Clamp: can't go below 0, can't exceed max trim, and can't extend past adjacent clip
+      const minTrimStart = startTrimStart - maxExtension; // How far we can extend (reduce trimStart)
       const maxTrim = clip.duration - (clip.trimEnd ?? 0) - 0.1; // Keep min 0.1s visible
-      const clampedTrimStart = snapToGrid(Math.min(newTrimStart, maxTrim));
+      const clampedTrimStart = snapToGrid(Math.max(minTrimStart, Math.min(newTrimStart, maxTrim)));
 
       const newTimestamp = startTimestamp + (clampedTrimStart - startTrimStart);
 
@@ -130,13 +153,25 @@ export function AudioTimelineClip({
     const startX = e.clientX;
     const startTrimEnd = clip.trimEnd ?? 0;
 
+    // Calculate max extension based on adjacent clips in this layer
+    const timelineClips: TimelineClipType[] = layerClips.map((c) => ({
+      id: c.id,
+      timestamp: c.timestamp,
+      duration: c.duration,
+      trimStart: c.trimStart,
+      trimEnd: c.trimEnd,
+    }));
+    const maxExtension = getMaxTrimExtension(timelineClips, clip.id, 'right');
+
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - startX;
       const deltaTime = -deltaX / pixelsPerSecond; // Negative because right drag = less trimEnd
 
-      const newTrimEnd = Math.max(0, startTrimEnd + deltaTime);
+      const newTrimEnd = startTrimEnd + deltaTime;
+      // Clamp: can't go below 0, can't exceed max trim, and can't extend past adjacent clip
+      const minTrimEnd = startTrimEnd - maxExtension; // How far we can extend (reduce trimEnd)
       const maxTrim = clip.duration - (clip.trimStart ?? 0) - 0.1; // Keep min 0.1s visible
-      const clampedTrimEnd = snapToGrid(Math.min(newTrimEnd, maxTrim));
+      const clampedTrimEnd = snapToGrid(Math.max(minTrimEnd, Math.min(newTrimEnd, maxTrim)));
 
       onUpdateTrim(clip.id, { trimEnd: clampedTrimEnd }, layerId);
     };
