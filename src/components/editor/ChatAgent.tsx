@@ -71,6 +71,7 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
     cancelToolOptions,
     hasPendingSelection,
     markMessageFeedback,
+    handleEditTracked,
   } = useChatAgent(
     clips,
     audioClips,
@@ -225,6 +226,7 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
                   onSelect={selectToolOption}
                   onCancel={cancelToolOptions}
                   disabled={isSending}
+                  onEditTracked={handleEditTracked}
                 />
               </div>
             </div>
