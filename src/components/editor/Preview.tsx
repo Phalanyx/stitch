@@ -69,14 +69,25 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
       if (currentTime >= clipStart && currentTime <= clipEnd) {
         // Audio should be playing at this time
         const audioTime = currentTime - clipStart + trimStart;
-        // Use tighter sync threshold near clip boundaries
-        const progressInClip = (currentTime - clipStart) / visibleDuration;
-        const isNearBoundary = progressInClip < 0.1 || progressInClip > 0.9;
-        const syncThreshold = isNearBoundary ? 0.05 : 0.3;
-        if (Math.abs(audio.currentTime - audioTime) > syncThreshold) {
-          audio.currentTime = audioTime;
+
+        // During smooth forward playback, skip seeking if audio is already playing
+        // This prevents stuttering from constant currentTime assignments
+        const isForwardPlaying = isPlayingForwardRef.current;
+        const shouldSkipSeek = isForwardPlaying && isPlaying && !audio.paused;
+
+        if (!shouldSkipSeek) {
+          // Use tighter sync threshold near clip boundaries
+          const progressInClip = (currentTime - clipStart) / visibleDuration;
+          const isNearBoundary = progressInClip < 0.1 || progressInClip > 0.9;
+          const syncThreshold = isNearBoundary ? 0.05 : 0.3;
+          if (Math.abs(audio.currentTime - audioTime) > syncThreshold) {
+            audio.currentTime = audioTime;
+          }
         }
+
         if (isPlaying && audio.paused) {
+          // When starting audio, sync its position first
+          audio.currentTime = audioTime;
           audio.play().catch(() => {
             // Ignore autoplay errors
           });
