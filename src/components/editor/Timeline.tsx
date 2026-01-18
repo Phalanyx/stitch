@@ -280,7 +280,11 @@ export function Timeline({
       if (lastIndex !== -1 && currentIndex !== -1) {
         const start = Math.min(lastIndex, currentIndex);
         const end = Math.max(lastIndex, currentIndex);
-        const rangeClips = allClipsSorted.slice(start, end + 1).map(({ timestamp, ...clip }) => clip);
+        // Filter to only video clips in range
+        const rangeClips = allClipsSorted
+          .slice(start, end + 1)
+          .filter((c) => c.type === 'video')
+          .map(({ timestamp, ...clip }) => clip);
         selectRange(rangeClips);
         return;
       }
@@ -297,7 +301,11 @@ export function Timeline({
       if (lastIndex !== -1 && currentIndex !== -1) {
         const start = Math.min(lastIndex, currentIndex);
         const end = Math.max(lastIndex, currentIndex);
-        const rangeClips = allClipsSorted.slice(start, end + 1).map(({ timestamp, ...clip }) => clip);
+        // Filter to only audio clips in range
+        const rangeClips = allClipsSorted
+          .slice(start, end + 1)
+          .filter((c) => c.type === 'audio')
+          .map(({ timestamp, ...clip }) => clip);
         selectRange(rangeClips);
         return;
       }
@@ -496,6 +504,7 @@ export function Timeline({
               <TimelineClip
                 key={clip.id}
                 clip={clip}
+                clips={clips}
                 pixelsPerSecond={PIXELS_PER_SECOND}
                 onUpdateTimestamp={onUpdateTimestamp}
                 onUpdateTrim={onUpdateTrim!}
@@ -530,6 +539,7 @@ export function Timeline({
                 <AudioTimelineClip
                   key={clip.id}
                   clip={clip}
+                  layerClips={layer.clips}
                   layerId={layer.id}
                   pixelsPerSecond={PIXELS_PER_SECOND}
                   onUpdateTimestamp={onUpdateAudioTimestamp!}

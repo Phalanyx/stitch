@@ -242,6 +242,126 @@ export function validateTrack(clips: TimelineClip[]): OverlapViolation[] {
 }
 
 /**
+ * Result of auto-trim calculation
+ */
+export interface AutoTrimResult {
+  clipToTrim: string | null;
+  newTrimEnd: number;
+  isValid: boolean;
+}
+
+/**
+ * Calculate if auto-trim can resolve an overlap when moving a clip.
+ * When clip START is dragged INTO an existing clip (overwrite case),
+ * this calculates how to auto-trim the existing clip's end.
+ *
+ * @param clips - Array of existing clips
+ * @param movingClip - The clip being moved (with its new position)
+ * @param excludeId - ID of the clip being moved (to exclude from overlap check)
+ * @returns AutoTrimResult with clip to trim, new trimEnd value, and validity
+ */
+export function calculateAutoTrim(
+  clips: TimelineClip[],
+  movingClip: TimelineClip,
+  excludeId?: string
+): AutoTrimResult {
+  const movingStart = movingClip.timestamp;
+  const movingEnd = getClipEndTime(movingClip);
+
+  // Filter out the clip being moved
+  const otherClips = excludeId
+    ? clips.filter((c) => c.id !== excludeId)
+    : clips;
+
+  // Find a clip that the moving clip's START falls within
+  // (i.e., movingStart is inside an existing clip's range)
+  const overlappedClip = otherClips.find((clip) => {
+    const clipStart = clip.timestamp;
+    const clipEnd = getClipEndTime(clip);
+    // Moving clip's start is within this clip's range
+    return movingStart > clipStart && movingStart < clipEnd;
+  });
+
+  if (!overlappedClip) {
+    // No clip to auto-trim - check if there's any overlap at all
+    const hasOverlap = otherClips.some((clip) => {
+      const clipStart = clip.timestamp;
+      const clipEnd = getClipEndTime(clip);
+      return rangesOverlap(movingStart, movingEnd, clipStart, clipEnd);
+    });
+
+    return {
+      clipToTrim: null,
+      newTrimEnd: 0,
+      isValid: !hasOverlap,
+    };
+  }
+
+  // Calculate how much to increase the overlapped clip's trimEnd
+  const overlappedClipEnd = getClipEndTime(overlappedClip);
+  const overlapAmount = overlappedClipEnd - movingStart;
+
+  // Calculate new trimEnd for the overlapped clip
+  const currentTrimEnd = overlappedClip.trimEnd ?? 0;
+  const newTrimEnd = currentTrimEnd + overlapAmount;
+
+  // Check minimum duration constraint (0.1s)
+  const overlappedTrimStart = overlappedClip.trimStart ?? 0;
+  const newVisibleDuration = overlappedClip.duration - overlappedTrimStart - newTrimEnd;
+
+  if (newVisibleDuration < 0.1) {
+    // Would trim clip below minimum - not valid
+    return {
+      clipToTrim: null,
+      newTrimEnd: 0,
+      isValid: false,
+    };
+  }
+
+  // Check if the moving clip would still overlap with other clips after this trim
+  const trimmedOverlappedEnd = movingStart; // After trim, overlapped clip ends where moving starts
+  const stillHasOverlap = otherClips.some((clip) => {
+    if (clip.id === overlappedClip.id) return false; // Skip the clip we're trimming
+    const clipStart = clip.timestamp;
+    const clipEnd = getClipEndTime(clip);
+    return rangesOverlap(movingStart, movingEnd, clipStart, clipEnd);
+  });
+
+  if (stillHasOverlap) {
+    // Would still have overlap even after trimming - not valid for auto-trim
+    return {
+      clipToTrim: null,
+      newTrimEnd: 0,
+      isValid: false,
+    };
+  }
+
+  return {
+    clipToTrim: overlappedClip.id,
+    newTrimEnd,
+    isValid: true,
+  };
+}
+
+/**
+ * Check if a position is valid, accounting for potential auto-trim resolution
+ */
+export function isPositionValidOrAutoTrimmable(
+  clips: TimelineClip[],
+  movingClip: TimelineClip,
+  excludeId?: string
+): boolean {
+  // First check if position is already valid (no overlap)
+  if (!wouldOverlap(clips, movingClip, excludeId)) {
+    return true;
+  }
+
+  // Check if auto-trim can resolve the overlap
+  const autoTrimResult = calculateAutoTrim(clips, movingClip, excludeId);
+  return autoTrimResult.isValid;
+}
+
+/**
  * Get the maximum trim that can be applied without overlapping the next clip
  * Used to constrain trim operations
  */

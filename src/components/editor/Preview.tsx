@@ -57,6 +57,28 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
 
   // Sync audio with timeline
   useEffect(() => {
+    // During scrubbing, pause all audio and skip sync to prevent choppy/conflicting audio
+    if (isSeekingRef.current) {
+      audioClips.forEach(clip => {
+        const audio = audioRefs.current.get(clip.id);
+        if (audio && !audio.paused) {
+          audio.pause();
+        }
+      });
+      return;
+    }
+
+    // #NOTE: Temporarily mute audio during reverse playback until proper reverse audio is implemented
+    if (isPlayingReverseRef.current) {
+      audioClips.forEach(clip => {
+        const audio = audioRefs.current.get(clip.id);
+        if (audio && !audio.paused) {
+          audio.pause();
+        }
+      });
+      return;
+    }
+
     audioClips.forEach(clip => {
       const audio = audioRefs.current.get(clip.id);
       if (!audio) return;
@@ -100,6 +122,8 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         if (!audio.paused) {
           audio.pause();
         }
+        // Reset to clip start for clean playback on re-entry
+        audio.currentTime = trimStart;
       }
     });
   }, [currentTime, isPlaying, audioClips]);
