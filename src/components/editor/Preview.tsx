@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, RefObject, useMemo } from 'react';
-import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, Undo2, Redo2 } from 'lucide-react';
 import { VideoReference } from '@/types/video';
 import { AudioLayer } from '@/types/audio';
 
@@ -16,10 +16,15 @@ interface PreviewProps {
   onSeek: (time: number) => void;
   onDropVideo?: (video: { id: string; url: string; duration?: number }) => void;
   isSeekingRef: RefObject<boolean>;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
-export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onSeek, onDropVideo, isSeekingRef }: PreviewProps) {
+export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying, currentTime, onTimeUpdate, onSeek, onDropVideo, isSeekingRef, onUndo, onRedo, canUndo, canRedo }: PreviewProps) {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [volume, setVolume] = useState(1); // Volume range: 0 to 1
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const prevActiveClipIdRef = useRef<string | null>(null);
   const isTransitioningRef = useRef(false);
@@ -54,6 +59,13 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
       }
     });
   }, [audioClips]);
+
+  // Apply volume to all audio elements
+  useEffect(() => {
+    audioRefs.current.forEach((audio) => {
+      audio.volume = volume;
+    });
+  }, [volume]);
 
   // Sync audio with timeline
   useEffect(() => {
@@ -738,6 +750,26 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
 
       {/* Controls Area */}
       <div className="flex-shrink-0 bg-gray-800 border-t border-gray-700 h-10 flex items-center justify-center gap-1 px-2">
+        {/* Undo/Redo Controls */}
+        <div className="flex items-center gap-1 mr-2 pr-2 border-r border-gray-700">
+          <button
+            onClick={onUndo}
+            disabled={!canUndo}
+            className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center rounded transition-colors"
+            title="Undo (Ctrl+Z)"
+          >
+            <Undo2 className="w-4 h-4 text-gray-300" />
+          </button>
+          <button
+            onClick={onRedo}
+            disabled={!canRedo}
+            className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center rounded transition-colors"
+            title="Redo (Ctrl+Shift+Z)"
+          >
+            <Redo2 className="w-4 h-4 text-gray-300" />
+          </button>
+        </div>
+
         {/* Skip to Beginning */}
         <button
           onClick={handleSkipToBeginning}
@@ -787,6 +819,21 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         >
           <SkipForward className="w-4 h-4 text-gray-300" />
         </button>
+
+        {/* Volume Control */}
+        <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
+          <Volume2 className="w-4 h-4 text-gray-300 flex-shrink-0" />
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            className="w-20 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
+            title={`Volume: ${Math.round(volume * 100)}%`}
+          />
+        </div>
       </div>
     </div>
   );

@@ -354,7 +354,7 @@ export function Timeline({
   }
 
   return (
-    <div className="bg-gray-900 border-t border-gray-700 flex" style={{ height: `${totalHeight}px` }}>
+    <div className="bg-gray-900 border-t border-gray-700 flex w-full" style={{ height: `${totalHeight}px` }}>
       {/* Track labels */}
       <div className="flex-shrink-0 border-r border-gray-700 relative" style={{ width: `${trackLabelWidth}px` }}>
         {/* Resize handle */}
@@ -567,6 +567,7 @@ export function Timeline({
           />
         </div>
       </div>
+
     </div>
   );
 }

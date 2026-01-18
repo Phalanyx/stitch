@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Sidebar } from './Sidebar';
+import { Sidebar, SidebarRef } from './Sidebar';
 import { Preview } from './Preview';
 import { ChatAgent } from './ChatAgent';
 import { Timeline } from './Timeline';
@@ -11,7 +11,7 @@ import { useBehaviorAgent } from '@/hooks/useBehaviorAgent';
 import { useVideoExport } from '@/hooks/useVideoExport';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { ExportProgressModal } from '@/components/ui/ExportProgressModal';
-import { Loader2, Download, Undo2, Redo2 } from 'lucide-react';
+import { Loader2, Download, Upload } from 'lucide-react';
 
 import { AudioMetadata } from '@/types/audio';
 
@@ -88,6 +88,7 @@ export function Editor() {
 
   // Playback state lifted from Preview (moved up so we can use currentTimeRef)
   const videoRef = useRef<HTMLVideoElement>(null);
+  const sidebarRef = useRef<SidebarRef>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const isSeekingRef = useRef(false);
@@ -256,6 +257,28 @@ export function Editor() {
   const { runAgent } = useBehaviorAgent(clips, audioClips);
   const lastSentCount = useRef<number | null>(null);
 
+  // Import handler that detects file type and routes to correct library
+  const handleImport = useCallback(() => {
+    // Create a file input that accepts both video and audio
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'video/*,audio/*';
+    input.multiple = true;
+    
+    input.onchange = (e) => {
+      const files = Array.from((e.target as HTMLInputElement).files || []);
+      
+      for (const file of files) {
+        // Use the Sidebar's processFile method to handle the file
+        if (sidebarRef.current) {
+          sidebarRef.current.processFile(file);
+        }
+      }
+    };
+    
+    input.click();
+  }, []);
+
   useEffect(() => {
     if (isLoading) return;
     if (lastSentCount.current === clips.length) return;
@@ -291,42 +314,38 @@ export function Editor() {
 
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
-      {/* Toolbar */}
-      <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 px-4 py-2 flex justify-between items-center">
-        {/* Undo/Redo Buttons */}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={undo}
-            disabled={!canUndo}
-            className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 disabled:text-gray-600 disabled:hover:bg-transparent disabled:cursor-not-allowed rounded transition-colors"
-            title="Undo (Cmd+Z)"
-          >
-            <Undo2 className="w-5 h-5" />
-          </button>
-          <button
-            onClick={redo}
-            disabled={!canRedo}
-            className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 disabled:text-gray-600 disabled:hover:bg-transparent disabled:cursor-not-allowed rounded transition-colors"
-            title="Redo (Cmd+Shift+Z)"
-          >
-            <Redo2 className="w-5 h-5" />
-          </button>
+      {/* Top Navigation Bar */}
+      <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 px-4 py-3 flex justify-between items-center">
+        {/* Left side - App title */}
+        <div className="flex items-center">
+          <h1 className="text-white font-semibold text-lg">Stitch</h1>
         </div>
 
-        {/* Export Button */}
-        <button
-          onClick={handleExport}
-          disabled={isExporting || clips.length === 0}
-          className="flex items-center gap-2 px-3 h-7 bg-sky-600 hover:bg-sky-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm rounded-md transition-colors"
-          title={clips.length === 0 ? 'Add clips to timeline to export' : 'Export video'}
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>{isExporting ? 'Exporting...' : 'Export'}</span>
-        </button>
+        {/* Right side - Action buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleImport}
+            className="flex items-center gap-2 px-3 h-8 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-md transition-colors"
+            title="Import media files"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Import</span>
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={isExporting || clips.length === 0}
+            className="flex items-center gap-2 px-3 h-8 bg-sky-600 hover:bg-sky-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm rounded-md transition-colors"
+            title={clips.length === 0 ? 'Add clips to timeline to export' : 'Export video'}
+          >
+            <Download className="w-4 h-4" />
+            <span>{isExporting ? 'Exporting...' : 'Export'}</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
+          ref={sidebarRef}
           onAddToTimeline={handleAddVideoWithAudio}
           onAddAudioToTimeline={addAudioToTimeline}
           newAudio={agentCreatedAudio}
@@ -343,6 +362,10 @@ export function Editor() {
           onSeek={handleSeek}
           onDropVideo={handleAddVideoWithAudio}
           isSeekingRef={isSeekingRef}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
         />
         <ChatAgent
           clips={clips}
