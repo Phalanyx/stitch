@@ -280,8 +280,8 @@ export function TimelineClip({
         isPositionInvalid
           ? 'bg-red-500 ring-2 ring-red-300'
           : isSelected
-          ? 'bg-slate-600 ring-2 ring-white'
-          : 'bg-slate-600'
+          ? 'bg-sky-600 ring-2 ring-white'
+          : 'bg-sky-600'
       } ${isDragging ? 'cursor-grabbing opacity-80' : ''} ${isResizing ? 'opacity-90' : ''}`}
       style={{ left: `${left}px`, width: `${width}px`, minWidth: '20px' }}
       onContextMenu={handleContextMenu}
@@ -292,7 +292,7 @@ export function TimelineClip({
     >
       {/* Left resize handle */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-slate-700 hover:bg-slate-500 rounded-l-md"
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-sky-700 hover:bg-sky-500 rounded-l-md"
         onMouseDown={handleLeftResize}
       />
 
@@ -317,7 +317,7 @@ export function TimelineClip({
 
       {/* Right resize handle */}
       <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-slate-700 hover:bg-slate-500 rounded-r-md"
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-sky-700 hover:bg-sky-500 rounded-r-md"
         onMouseDown={handleRightResize}
       />
 
@@ -329,7 +329,7 @@ export function TimelineClip({
           onClick={(e) => e.stopPropagation()}
         >
           <button
-            className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700"
+            className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700 rounded"
             onClick={() => {
               onRemove(clip.id);
               contextMenu.closeContextMenu();

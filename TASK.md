@@ -1,5 +1,10 @@
 # Tasks
-
-- Define project-specific user behavioral states for the editor (e.g., uploading, building timeline, trimming, previewing, exporting), and the event/property schema that captures them.
-- Implement tracking that records those behavioral states and key transitions as a linear sequence suitable for agent ingestion.
-- Specify how the agent consumes the linearized state to deliver actions/insights beyond a simple rules engine.
+- Define a chat tool named `create_transition`.
+- Workflow:
+  - Call `list_clips` first.
+  - Use the user’s described clip positions to identify the preceding and succeeding timeline clips.
+  - Extract the last frame of the preceding clip and the first frame of the succeeding clip.
+  - Send those frames to VEO 3 to generate a smooth fade transition.
+  - Automatically splice the generated transition video between the two clips using 'move_video' and 'add_video'.
+- Inputs:
+  - Identifiers for the preceding and succeeding clips (their order/position in the current timeline).

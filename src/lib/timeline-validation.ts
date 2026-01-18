@@ -38,8 +38,14 @@ export function getVisibleDuration(clip: TimelineClip): number {
 }
 
 /**
+ * Small epsilon for floating point comparisons (1ms tolerance)
+ */
+const EPSILON = 0.001;
+
+/**
  * Check if two time ranges overlap
  * Note: Touching edges (end1 === start2) is NOT considered an overlap
+ * Uses epsilon tolerance for floating point precision issues
  */
 export function rangesOverlap(
   start1: number,
@@ -47,7 +53,8 @@ export function rangesOverlap(
   start2: number,
   end2: number
 ): boolean {
-  return start1 < end2 && end1 > start2;
+  // Add epsilon tolerance: ranges must overlap by more than EPSILON to count
+  return start1 < end2 - EPSILON && end1 > start2 + EPSILON;
 }
 
 /**

@@ -67,7 +67,7 @@ export function ExportProgressModal({ progress, isOpen, onClose }: ExportProgres
             <div className="w-full bg-gray-700 rounded-full h-2.5">
               <div
                 className={`h-2.5 rounded-full transition-all duration-300 ${
-                  isError ? 'bg-red-500' : isComplete ? 'bg-violet-500' : 'bg-slate-500'
+                  isError ? 'bg-red-500' : isComplete ? 'bg-blue-500' : 'bg-sky-500'
                 }`}
                 style={{ width: `${progress.progress}%` }}
               />
@@ -78,7 +78,7 @@ export function ExportProgressModal({ progress, isOpen, onClose }: ExportProgres
 
           {isComplete && (
             <div className="pt-2">
-              <p className="text-sm text-violet-400">
+              <p className="text-sm text-blue-400">
                 Your video has been exported successfully! Check your downloads folder.
               </p>
             </div>

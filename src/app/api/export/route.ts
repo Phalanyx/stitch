@@ -260,9 +260,10 @@ export async function POST(request: NextRequest) {
           audioInputIndex++;
         }
 
-        // Mix all audio segments and combine with video audio
+        // Mix all audio segments (exclude original video audio when audio clips are present)
         if (audioSegments.length > 0) {
-          audioFilters.push(`[0:a]${audioSegments.join('')}amix=inputs=${audioSegments.length + 1}:duration=longest[outa]`);
+          // Only mix the new audio tracks, not the original video audio
+          audioFilters.push(`${audioSegments.join('')}amix=inputs=${audioSegments.length}:duration=longest[outa]`);
         }
 
         // Apply filters

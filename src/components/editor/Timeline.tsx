@@ -394,12 +394,12 @@ export function Timeline({
   }
 
   return (
-    <div className="bg-gray-900 border-t border-gray-700 flex" style={{ height: `${totalHeight}px` }}>
+    <div className="bg-gray-900 border-t border-gray-700 flex w-full" style={{ height: `${totalHeight}px` }}>
       {/* Track labels */}
       <div className="flex-shrink-0 border-r border-gray-700 relative" style={{ width: `${trackLabelWidth}px` }}>
         {/* Resize handle */}
         <div
-          className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-slate-500 z-10"
+          className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-sky-500 z-10"
           onMouseDown={() => setIsResizingTrackLabel(true)}
         />
         {/* Time markers spacer */}
@@ -410,14 +410,14 @@ export function Timeline({
           className="flex items-center justify-center border-b border-gray-700 gap-1"
           style={{ height: `${VIDEO_TRACK_HEIGHT}px` }}
         >
-          <Film size={14} className="text-slate-400" />
+          <Film size={14} className="text-sky-400" />
           <span className="text-xs text-gray-400">Video</span>
         </div>
 
         {/* Single audio track label */}
         {audioLayer && (
           <div
-            className="flex items-center px-1 border-b border-gray-700 gap-1 bg-violet-900/30"
+            className="flex items-center px-1 border-b border-gray-700 gap-1 bg-blue-900/30'"
             style={{ height: `${audioTrackHeight}px` }}
           >
             <button
@@ -479,7 +479,7 @@ export function Timeline({
           {/* Video track */}
           <div
             className={`absolute left-0 right-0 border-b border-gray-700 transition-colors ${
-              isDraggingOverVideo ? 'bg-slate-500/20' : ''
+              isDraggingOverVideo ? 'bg-sky-500/20' : ''
             }`}
             style={{ top: `${TIME_MARKERS_HEIGHT}px`, height: `${VIDEO_TRACK_HEIGHT}px` }}
             onDragOver={handleVideoDragOver}
@@ -512,8 +512,8 @@ export function Timeline({
           {audioLayer && (
             <div
               className={`absolute left-0 right-0 border-b border-gray-700 transition-colors ${
-                isDraggingOverAudio ? 'bg-violet-500/20' : ''
-              } ${activeLayerId === audioLayer.id ? 'bg-violet-900/10' : ''} ${
+                isDraggingOverAudio ? 'bg-blue-500/20' : ''
+              } ${activeLayerId === audioLayer.id ? 'bg-blue-900/10' : ''} ${
                 audioLayer.muted ? 'opacity-50' : ''
               }`}
               style={{
@@ -551,6 +551,7 @@ export function Timeline({
           )}
         </div>
       </div>
+
     </div>
   );
 }

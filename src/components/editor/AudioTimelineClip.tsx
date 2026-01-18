@@ -331,8 +331,8 @@ export function AudioTimelineClip({
         isPositionInvalid
           ? 'bg-red-500 ring-2 ring-red-300'
           : isSelected
-          ? 'bg-violet-600 ring-2 ring-white'
-          : 'bg-violet-600'
+          ? 'bg-blue-600 ring-2 ring-white'
+          : 'bg-blue-600'
       } ${isDragging ? 'cursor-grabbing opacity-80' : ''} ${isResizing ? 'opacity-90' : ''} ${clip.muted ? 'opacity-50' : ''}`}
       style={{ left: `${left}px`, width: `${width}px`, minWidth: '20px', top: `${top}px`, height: `${AUDIO_CLIP_HEIGHT}px` }}
       onContextMenu={handleContextMenu}
@@ -343,7 +343,7 @@ export function AudioTimelineClip({
     >
       {/* Left resize handle */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-violet-700 hover:bg-violet-500 rounded-l-md"
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-blue-700 hover:bg-blue-500 rounded-l-md"
         onMouseDown={handleLeftResize}
       />
 
@@ -375,7 +375,7 @@ export function AudioTimelineClip({
 
       {/* Right resize handle */}
       <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-violet-700 hover:bg-violet-500 rounded-r-md"
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-blue-700 hover:bg-blue-500 rounded-r-md"
         onMouseDown={handleRightResize}
       />
 
@@ -397,6 +397,15 @@ export function AudioTimelineClip({
           </button>
           <button
             className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700"
+            onClick={() => {
+              onToggleMute?.(clip.id, layerId);
+              contextMenu.closeContextMenu();
+            }}
+          >
+            {clip.muted ? 'Unmute' : 'Mute'}
+          </button>
+          <button
+            className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700 rounded"
             onClick={() => {
               onRemove(clip.id, layerId);
               contextMenu.closeContextMenu();

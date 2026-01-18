@@ -14,9 +14,10 @@ export const TOOL_DEFINITIONS = [
   { name: 'add_video', description: 'Add a video TO the timeline. Args: {videoId, timestamp?, trimStart?, trimEnd?}. For search results: pass start as trimStart, end as trimEnd to add just that clip segment.' },
   { name: 'remove_video', description: 'Remove a clip FROM the timeline. Args: {clipId (from list_clips)}. Call list_clips first to get clipId.' },
   { name: 'move_video', description: 'Move a clip to new position. Args: {clipId (from list_clips), timestamp}.' },
+  { name: 'create_transition', description: 'Generate a smooth transition between two adjacent timeline clips. Args: {precedingPosition, succeedingPosition} (1-based positions from list_clips), plus optional prompt?, durationSeconds?. Call list_clips first to see clip positions.' },
 
   // Audio tools
-  { name: 'create_audio_from_text', description: 'Generate speech audio from text. Args: {text}.' },
+  { name: 'create_audio_from_text', description: 'Generate speech audio from text with exact duration. Args: {text, targetDuration (required, seconds)}. Audio will be stretched or truncated to match targetDuration.' },
   { name: 'add_audio', description: 'Add audio to timeline. Args: {audioId, timestamp?}.' },
   { name: 'remove_audio', description: 'Remove audio from timeline. Args: {clipId}.' },
 
@@ -105,7 +106,8 @@ export function createClientToolRegistry(options?: {
     }),
 
     list_clips: async (_args, context) => {
-      const clips = context.clips.map((clip) => ({
+      const clips = context.clips.map((clip, index) => ({
+        index: index + 1,
         clipId: clip.id,
         videoId: clip.videoId ?? clip.id,
         timestamp: clip.timestamp,
@@ -203,16 +205,117 @@ export function createClientToolRegistry(options?: {
       return modifyTimeline('move_clip', { clipId, timestamp });
     },
 
+    create_transition: async (args, context) => {
+      const precedingPosition = Number(args.precedingPosition ?? 0);
+      const succeedingPosition = Number(args.succeedingPosition ?? 0);
+      if (!precedingPosition || !succeedingPosition) {
+        return errorOutput('Missing precedingPosition or succeedingPosition.');
+      }
+
+      // Sort clips by timestamp for consistent position mapping
+      const sortedClips = [...context.clips].sort((a, b) => a.timestamp - b.timestamp);
+
+      // Validate positions are within range
+      if (precedingPosition < 1 || precedingPosition > sortedClips.length) {
+        return errorOutput(`precedingPosition ${precedingPosition} is out of range (1-${sortedClips.length}).`);
+      }
+      if (succeedingPosition < 1 || succeedingPosition > sortedClips.length) {
+        return errorOutput(`succeedingPosition ${succeedingPosition} is out of range (1-${sortedClips.length}).`);
+      }
+
+      // Validate positions are adjacent (consecutive)
+      if (succeedingPosition !== precedingPosition + 1) {
+        return errorOutput(`Positions must be adjacent. Got ${precedingPosition} and ${succeedingPosition}, expected consecutive positions.`);
+      }
+
+      // Look up clips by position (1-based to 0-based index)
+      const preceding = sortedClips[precedingPosition - 1];
+      const succeeding = sortedClips[succeedingPosition - 1];
+
+      if (!preceding.url || !succeeding.url) {
+        return errorOutput('Missing clip URLs for transition generation.');
+      }
+
+      const precedingTrimStart = preceding.trimStart ?? 0;
+      const precedingTrimEnd = preceding.trimEnd ?? 0;
+      const precedingVisible = Math.max(
+        preceding.duration - precedingTrimStart - precedingTrimEnd,
+        0
+      );
+      const insertTimestamp = preceding.timestamp + precedingVisible;
+
+      const succeedingTrimStart = succeeding.trimStart ?? 0;
+
+      const response = await fetch('/api/transitions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          precedingUrl: preceding.url,
+          succeedingUrl: succeeding.url,
+          precedingTrimEnd,
+          succeedingTrimStart,
+          prompt: args.prompt,
+          durationSeconds: args.durationSeconds,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        videoId?: string;
+        url?: string;
+        duration?: number;
+        error?: string;
+      };
+
+      if (!response.ok || !data.videoId) {
+        return errorOutput(data.error || 'Failed to generate transition.');
+      }
+
+      const addResult = await modifyTimeline('add_video', {
+        videoId: data.videoId,
+        timestamp: insertTimestamp,
+      });
+      if (addResult.status === 'error') {
+        return addResult;
+      }
+
+      const shiftBy = Number(data.duration ?? 0);
+      if (shiftBy > 0) {
+        const moveResult = await modifyTimeline('move_clip', {
+          clipId: succeeding.id,
+          timestamp: succeeding.timestamp + shiftBy,
+        });
+        if (moveResult.status === 'error') {
+          return moveResult;
+        }
+      }
+
+      return {
+        status: 'ok',
+        changed: true,
+        output: {
+          transitionVideoId: data.videoId,
+          transitionUrl: data.url ?? null,
+          transitionDuration: data.duration ?? null,
+          insertedAt: insertTimestamp,
+          shiftedSucceedingTo: shiftBy > 0 ? succeeding.timestamp + shiftBy : null,
+        },
+      };
+    },
+
     // Audio tools
     create_audio_from_text: async (args) => {
       const text = String(args.text ?? '');
       if (!text) {
         return errorOutput('Missing text argument.');
       }
+      const targetDuration = args.targetDuration !== undefined ? Number(args.targetDuration) : undefined;
+      if (targetDuration === undefined || targetDuration <= 0) {
+        return errorOutput('Missing or invalid targetDuration argument (must be positive number in seconds).');
+      }
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, targetDuration }),
       });
       const data = (await response.json()) as {
         audio?: AudioMetadata;
