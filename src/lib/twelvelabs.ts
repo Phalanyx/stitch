@@ -11,10 +11,9 @@ const INDEX_ID = process.env.TWELVE_LABS_INDEX_ID!;
 // Search types
 export interface VideoSearchResult {
   videoId: string;
-  score: number;
+  rank: number;
   start: number;
   end: number;
-  confidence: string;
   thumbnailUrl?: string;
 }
 
@@ -284,25 +283,20 @@ export async function searchVideos(
 
   const results: VideoSearchResult[] = [];
 
-  // Collect results from the search response (only high confidence)
+  // Collect results from the search response
   for await (const clip of response) {
     if (results.length >= limit) break;
 
-    // Skip clips without required data or non-high confidence
+    // Skip clips without required data
     if (!clip.videoId || clip.start === undefined || clip.end === undefined) {
-      continue;
-    }
-
-    if (clip.confidence !== 'high') {
       continue;
     }
 
     results.push({
       videoId: clip.videoId,
-      score: clip.score ?? 0,
+      rank: clip.rank ?? 0,
       start: clip.start,
       end: clip.end,
-      confidence: clip.confidence,
       thumbnailUrl: clip.thumbnailUrl,
     });
   }

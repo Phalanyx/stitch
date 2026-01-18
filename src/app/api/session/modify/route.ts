@@ -82,9 +82,16 @@ export async function POST(request: NextRequest) {
         return errorResponse('Missing videoId for add_video operation');
       }
 
-      // Validate video exists and belongs to user
+      // Validate video exists and belongs to user (include associated audio)
+      // Check if videoId is a UUID or TwelveLabs ID
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(videoId);
+
       const video = await prisma.video.findFirst({
-        where: { id: videoId, userId: user.id },
+        where: {
+          userId: user.id,
+          ...(isUuid ? { id: videoId } : { twelveLabsId: videoId }),
+        },
+        include: { audio: true },
       });
       if (!video) {
         return errorResponse(`Video ${videoId} not found`);
@@ -122,7 +129,41 @@ export async function POST(request: NextRequest) {
       newClip.timestamp = validTimestamp;
 
       sessionVideo = [...sessionVideo, newClip];
-      message = `Added video to timeline at ${validTimestamp.toFixed(1)}s`;
+
+      // Also add associated audio if it exists
+      if (video.audio) {
+        // Ensure at least one audio layer exists
+        if (sessionAudio.length === 0) {
+          sessionAudio = [{
+            id: 'default',
+            name: 'Audio 1',
+            clips: [],
+            muted: false,
+          }];
+        }
+
+        const audioClipId = crypto.randomUUID();
+        const audioDuration = video.audio.duration ?? duration;
+
+        const newAudioClip: AudioReference = {
+          id: audioClipId,
+          audioId: video.audio.id,
+          url: video.audio.url,
+          timestamp: validTimestamp, // Same timestamp as video
+          duration: audioDuration,
+        };
+
+        // Add to first audio layer
+        sessionAudio = sessionAudio.map((layer, i) =>
+          i === 0
+            ? { ...layer, clips: [...layer.clips, newAudioClip] }
+            : layer
+        );
+
+        message = `Added video and audio to timeline at ${validTimestamp.toFixed(1)}s`;
+      } else {
+        message = `Added video to timeline at ${validTimestamp.toFixed(1)}s`;
+      }
     }
 
     else if (operation === 'remove_clip') {

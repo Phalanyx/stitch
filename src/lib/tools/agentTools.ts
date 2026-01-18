@@ -8,7 +8,7 @@ export const TOOL_DEFINITIONS = [
   { name: 'list_clips', description: 'List clips ON the timeline. Returns clipId (needed for remove/move), timestamp, duration. CALL THIS FIRST to delete or move clips.' },
   { name: 'list_audio', description: 'List audio clips on timeline with clipId, timestamp, duration.' },
   { name: 'list_uploaded_videos', description: 'List available source videos. Returns videoId (needed for add_video), name. CALL THIS to find videos to add.' },
-  { name: 'search_videos', description: 'Search indexed videos using natural language. Args: {query, searchOptions?: ["visual"|"audio"|"transcription"], limit?: number}. Returns matching clips with videoId, start/end times, score.' },
+  { name: 'search_videos', description: 'Search indexed videos using natural language. Args: {query, searchOptions?: ["visual"|"audio"|"transcription"], limit?: number}. Returns matching clips with videoId, start/end times, rank.' },
 
   // Video modification tools
   { name: 'add_video', description: 'Add a video TO the timeline. Args: {videoId (from list_uploaded_videos), timestamp?}.' },
@@ -146,10 +146,9 @@ export function createClientToolRegistry(options?: {
       const data = (await response.json()) as {
         results?: Array<{
           videoId: string;
-          score: number;
+          rank: number;
           start: number;
           end: number;
-          confidence: string;
           thumbnailUrl?: string;
         }>;
         error?: string;
