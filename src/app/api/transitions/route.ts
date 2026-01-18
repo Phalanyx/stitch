@@ -84,9 +84,10 @@ export async function POST(request: NextRequest) {
       config: {
         numberOfVideos: 1,
         durationSeconds,
+        // These properties are supported by Veo 3.1 but not in the SDK types yet
         generateAudio: false,
         lastFrame,
-      },
+      } as Parameters<typeof ai.models.generateVideos>[0]['config'],
     });
 
     while (!operation.done) {
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     const video = operation.response?.generatedVideos?.[0];
-    if (!video) {
+    if (!video?.video?.uri) {
       console.error('[transitions] No video generated in operation response:', JSON.stringify(operation.response));
       return NextResponse.json({ error: 'No video generated' }, { status: 502 });
     }

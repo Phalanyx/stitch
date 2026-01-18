@@ -9,16 +9,6 @@ export type ToolOptionVariation = {
   description: string;
 };
 
-export type StylisticRule = {
-  id: string;
-  toolName: string;
-  paramName: string;
-  ruleType: string;
-  pattern: string;
-  replacement?: string | null;
-  description: string;
-};
-
 type VariationResponse = {
   variations: Array<{
     value: string;
@@ -29,8 +19,7 @@ type VariationResponse = {
 export async function generateVariations(
   toolCall: ToolCall,
   userMessage: string,
-  conversation: Array<{ role: 'user' | 'assistant'; content: string }>,
-  stylisticRules?: StylisticRule[]
+  conversation: Array<{ role: 'user' | 'assistant'; content: string }>
 ): Promise<ToolOptionVariation[]> {
   const nlInfo = getNLParamInfo(toolCall.tool);
   if (!nlInfo) {
@@ -43,21 +32,6 @@ export async function generateVariations(
   }
 
   try {
-    // Build stylistic rules context if rules are provided
-    let ruleContext = '';
-    if (stylisticRules && stylisticRules.length > 0) {
-      const ruleDescriptions = stylisticRules.map(r => {
-        if (r.ruleType === 'addition') {
-          return `- Always add "${r.pattern}" to variations`;
-        } else if (r.ruleType === 'replacement' && r.replacement) {
-          return `- Replace "${r.pattern}" with "${r.replacement}"`;
-        } else {
-          return `- ${r.description}`;
-        }
-      });
-      ruleContext = '\n\nUser style preferences to apply:\n' + ruleDescriptions.join('\n');
-    }
-
     const prompt = [
       'Generate 3-4 alternative variations for a tool parameter.',
       'IMPORTANT: Respond with ONLY JSON in this format:',
@@ -80,7 +54,6 @@ export async function generateVariations(
         : toolCall.tool === 'create_transition'
         ? 'For transitions: vary style, mood, or visual effect descriptions.'
         : 'For text-to-speech: vary tone, pacing cues, or emphasis.',
-      ruleContext,
     ].join('\n');
 
     const responseText = await callChatLlm(prompt, { agent: 'chat' });

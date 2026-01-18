@@ -38,23 +38,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Trigger rule analysis in the background after recording
-    // We'll analyze edits for this specific tool to find patterns
-    const baseUrl = request.nextUrl.origin;
-    fetch(`${baseUrl}/api/stylistic-rules/analyze`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cookie': request.headers.get('cookie') || '',
-      },
-      body: JSON.stringify({
-        toolName,
-        paramName,
-      }),
-    }).catch((error) => {
-      console.error('Error triggering rule analysis:', error);
-    });
-
     return NextResponse.json({
       success: true,
       editId: edit.id,

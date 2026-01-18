@@ -120,3 +120,27 @@ export async function callLLMText(
 export function hasAnyLLMKey(): boolean {
   return hasGeminiKey() || hasCerebrasKey();
 }
+
+export function parseJsonFromText<T>(text: string | null): T | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  const objectStart = trimmed.indexOf('{');
+  const arrayStart = trimmed.indexOf('[');
+  const start =
+    objectStart === -1
+      ? arrayStart
+      : arrayStart === -1
+      ? objectStart
+      : Math.min(objectStart, arrayStart);
+  if (start === -1) return null;
+  const objectEnd = trimmed.lastIndexOf('}');
+  const arrayEnd = trimmed.lastIndexOf(']');
+  const end = Math.max(objectEnd, arrayEnd);
+  if (end === -1 || end <= start) return null;
+
+  try {
+    return JSON.parse(trimmed.slice(start, end + 1)) as T;
+  } catch {
+    return null;
+  }
+}

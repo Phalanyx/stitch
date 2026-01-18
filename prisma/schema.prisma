@@ -64,40 +64,6 @@ model MessageFeedback {
   @@map("message_feedback")
 }
 
-model UserFact {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  category   String   // "preference", "project", "brand", "workflow"
-  content    String   @db.Text
-  source     String   // "manual", "conversation", "tool_edit"
-  confidence Float    @default(1.0)
-  isActive   Boolean  @default(true) @map("is_active")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-
-  @@index([userId])
-  @@map("user_facts")
-}
-
-model StylisticRule {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
-  toolName    String   @map("tool_name")
-  paramName   String   @map("param_name")
-  ruleType    String   @map("rule_type") // "addition", "replacement", "style"
-  pattern     String   @db.Text
-  replacement String?  @db.Text
-  description String   @db.Text
-  occurrences Int      @default(1)
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@index([userId])
-  @@index([userId, toolName])
-  @@map("stylistic_rules")
-}
-
 model ToolEditHistory {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId        String   @map("user_id") @db.Uuid

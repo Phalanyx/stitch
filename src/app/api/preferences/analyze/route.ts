@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
-import { callGeminiText, parseJsonFromText } from '@/lib/ai/gemini';
+import { callLLMText, parseJsonFromText } from '@/lib/ai/llmService';
 
 type ConversationMessage = {
   role: 'user' | 'assistant';
@@ -174,7 +174,7 @@ If no new preferences found, return: {"likes": [], "dislikes": []}`;
   }
 
   try {
-    const response = await callGeminiText(prompt);
+    const response = await callLLMText(prompt, { agent: 'chat' });
     const extracted = parseJsonFromText<ExtractedPreferences>(response);
 
     if (!extracted) {
