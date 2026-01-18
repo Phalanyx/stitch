@@ -70,6 +70,7 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
     selectToolOption,
     cancelToolOptions,
     hasPendingSelection,
+    markMessageFeedback,
   } = useChatAgent(
     clips,
     audioClips,
@@ -204,15 +205,15 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
         ref={scrollRef}
         className="flex-1 overflow-y-auto px-3 py-2 space-y-2 text-sm"
       >
-        {messages.map((message) =>
+        {messages.map((message, index) =>
           message.role === 'user' ? (
-            <div key={message.id} className="flex justify-end">
+            <div key={message.id ?? `user-${index}`} className="flex justify-end">
               <div className="bg-sky-600/40 text-sky-100 rounded-2xl px-3 py-2 max-w-[80%] break-words">
                 {message.content}
               </div>
             </div>
           ) : message.role === 'tool_options' && message.toolOptions ? (
-            <div key={`${message.role}-${index}`} className="flex items-start gap-2">
+            <div key={message.id ?? `tool-${index}`} className="flex items-start gap-2">
               <img
                 src="/stitch_icon.jpeg"
                 alt="Stitch"

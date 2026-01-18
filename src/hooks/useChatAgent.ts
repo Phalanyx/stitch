@@ -3,10 +3,13 @@ import { runChatOrchestrator, ToolOptionsPreview } from '@/lib/agents/client/cha
 import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { ToolCall } from '@/lib/agents/client/types';
+import { useHistoryAgent } from './useHistoryAgent';
+import { PatternObservation } from '@/lib/agents/historyAgent/types';
 
 export type ToolOptionsData = ToolOptionsPreview;
 
 export type ChatMessage = {
+  id?: string;
   role: 'user' | 'assistant' | 'tool_options';
   content: string;
   feedback?: 'like' | 'dislike';
@@ -41,6 +44,14 @@ export function useChatAgent(
   const [showToolOptionsPreview, setShowToolOptionsPreview] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
 
+  // History agent integration
+  const {
+    analysis: historyAnalysis,
+    isAnalyzing: isAnalyzingHistory,
+    analyze: analyzeHistory,
+    consumeNotifications,
+  } = useHistoryAgent();
+
   const clipsRef = useRef(clips);
   const audioRef = useRef(audioClips);
   const onAudioCreatedRef = useRef(onAudioCreated);
@@ -69,6 +80,62 @@ export function useChatAgent(
     [clips]
   );
 
+  const markMessageFeedback = useCallback((messageId: string | undefined, feedback: 'like' | 'dislike') => {
+    if (!messageId) return;
+    setMessages((current) =>
+      current.map((m) => (m.id === messageId ? { ...m, feedback } : m))
+    );
+  }, []);
+
+  const selectToolOption = useCallback(async (selectedValue: string) => {
+    if (!pendingSelection) return;
+
+    setIsSending(true);
+    setPendingSelection(null);
+
+    try {
+      const result = await runChatOrchestrator({
+        message: pendingSelection.originalMessage,
+        knownClipIds,
+        context: {
+          clips: clipsRef.current,
+          audioClips: audioRef.current,
+        },
+        onAudioCreated: onAudioCreatedRef.current,
+        onTimelineChanged: onTimelineChangedRef.current,
+        showToolOptionsPreview,
+        resumeWithSelection: {
+          toolCall: pendingSelection.toolCall,
+          selectedValue,
+          pendingPlan: pendingSelection.pendingPlan,
+        },
+      });
+      setMessages((current) => [
+        ...current,
+        { id: generateId(), role: 'assistant', content: result.response || 'Unable to generate a response.' },
+      ]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: generateId(),
+          role: 'assistant',
+          content: error instanceof Error ? error.message : 'Failed to complete action.',
+        },
+      ]);
+    } finally {
+      setIsSending(false);
+    }
+  }, [pendingSelection, knownClipIds, showToolOptionsPreview]);
+
+  const cancelToolOptions = useCallback(() => {
+    setPendingSelection(null);
+    // Remove the tool_options message
+    setMessages((current) => current.filter((m) => m.role !== 'tool_options'));
+  }, []);
+
+  const hasPendingSelection = pendingSelection !== null;
+
   const sendMessage = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isSending) return;
@@ -89,6 +156,9 @@ export function useChatAgent(
         m.role === 'user' || m.role === 'assistant'
       );
 
+    // Consume pending history notifications
+    const patternNotifications = consumeNotifications();
+
     try {
       const result = await runChatOrchestrator({
         message: trimmed,
@@ -101,11 +171,31 @@ export function useChatAgent(
         onTimelineChanged: onTimelineChangedRef.current,
         conversation: conversationMessages,
         showToolOptionsPreview,
+        patternNotifications,
       });
-      setMessages((current) => [
-        ...current,
-        { role: 'assistant', content: response || 'Unable to generate a response.' },
-      ]);
+
+      // Handle paused state with tool options preview
+      if (result.isPaused && result.toolOptionsPreview) {
+        setPendingSelection({
+          toolCall: result.toolOptionsPreview.pendingToolCall,
+          pendingPlan: result.toolOptionsPreview.pendingPlan,
+          originalMessage: trimmed,
+        });
+        setMessages((current) => [
+          ...current,
+          {
+            id: generateId(),
+            role: 'tool_options',
+            content: '',
+            toolOptions: result.toolOptionsPreview,
+          },
+        ]);
+      } else {
+        setMessages((current) => [
+          ...current,
+          { id: generateId(), role: 'assistant', content: result.response || 'Unable to generate a response.' },
+        ]);
+      }
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -119,7 +209,7 @@ export function useChatAgent(
     } finally {
       setIsSending(false);
     }
-  }, [audioRef, clipsRef, input, isSending, knownClipIds, messages]);
+  }, [audioRef, clipsRef, consumeNotifications, input, isSending, knownClipIds, messages, showToolOptionsPreview]);
 
   return {
     messages,
@@ -127,5 +217,12 @@ export function useChatAgent(
     setInput,
     isSending,
     sendMessage,
+    selectToolOption,
+    cancelToolOptions,
+    hasPendingSelection,
+    markMessageFeedback,
+    historyAnalysis,
+    isAnalyzingHistory,
+    analyzeHistory,
   };
 }

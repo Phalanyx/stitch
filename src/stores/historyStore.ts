@@ -1,12 +1,32 @@
 import { create } from 'zustand';
-import { Command } from '@/lib/commands/types';
+import { Command, CommandType } from '@/lib/commands/types';
 
 const MAX_HISTORY_SIZE = 100;
+const ANALYSIS_TRIGGER_THRESHOLD = 5;
+
+export type SerializedCommand = {
+  id: string;
+  type: CommandType;
+  description: string;
+  timestamp: number;
+};
+
+export type SerializableHistory = {
+  commands: SerializedCommand[];
+  undoCount: number;
+  redoCount: number;
+  totalExecuted: number;
+};
 
 interface HistoryState {
   undoStack: Command[];
   redoStack: Command[];
   isUndoRedoInProgress: boolean;
+  undoCount: number;
+  redoCount: number;
+  totalExecuted: number;
+  commandsSinceLastAnalysis: number;
+  onAnalysisTrigger?: () => void;
 
   execute: (command: Command) => void;
   undo: () => void;
@@ -14,12 +34,20 @@ interface HistoryState {
   canUndo: () => boolean;
   canRedo: () => boolean;
   clear: () => void;
+  getSerializableHistory: () => SerializableHistory;
+  setAnalysisTrigger: (callback: (() => void) | undefined) => void;
+  resetAnalysisCounter: () => void;
 }
 
 export const useHistoryStore = create<HistoryState>((set, get) => ({
   undoStack: [],
   redoStack: [],
   isUndoRedoInProgress: false,
+  undoCount: 0,
+  redoCount: 0,
+  totalExecuted: 0,
+  commandsSinceLastAnalysis: 0,
+  onAnalysisTrigger: undefined,
 
   execute: (command: Command) => {
     // Execute the command
@@ -32,10 +60,20 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
         newUndoStack.shift();
       }
 
+      const newCommandCount = state.commandsSinceLastAnalysis + 1;
+      const shouldTrigger = newCommandCount >= ANALYSIS_TRIGGER_THRESHOLD && state.onAnalysisTrigger;
+
+      if (shouldTrigger) {
+        // Schedule the trigger callback outside of the state update
+        setTimeout(() => state.onAnalysisTrigger?.(), 0);
+      }
+
       return {
         undoStack: newUndoStack,
         // Clear redo stack when new command is executed
         redoStack: [],
+        totalExecuted: state.totalExecuted + 1,
+        commandsSinceLastAnalysis: shouldTrigger ? 0 : newCommandCount,
       };
     });
   },
@@ -55,6 +93,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
         undoStack: state.undoStack.slice(0, -1),
         redoStack: [...state.redoStack, command],
         isUndoRedoInProgress: false,
+        undoCount: state.undoCount + 1,
       }));
     } catch (error) {
       set({ isUndoRedoInProgress: false });
@@ -77,6 +116,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
         redoStack: state.redoStack.slice(0, -1),
         undoStack: [...state.undoStack, command],
         isUndoRedoInProgress: false,
+        redoCount: state.redoCount + 1,
       }));
     } catch (error) {
       set({ isUndoRedoInProgress: false });
@@ -96,6 +136,35 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     set({
       undoStack: [],
       redoStack: [],
+      undoCount: 0,
+      redoCount: 0,
+      totalExecuted: 0,
+      commandsSinceLastAnalysis: 0,
     });
+  },
+
+  getSerializableHistory: (): SerializableHistory => {
+    const state = get();
+    const commands: SerializedCommand[] = state.undoStack.map((cmd) => ({
+      id: cmd.id,
+      type: cmd.type,
+      description: cmd.description,
+      timestamp: cmd.timestamp,
+    }));
+
+    return {
+      commands,
+      undoCount: state.undoCount,
+      redoCount: state.redoCount,
+      totalExecuted: state.totalExecuted,
+    };
+  },
+
+  setAnalysisTrigger: (callback: (() => void) | undefined) => {
+    set({ onAnalysisTrigger: callback });
+  },
+
+  resetAnalysisCounter: () => {
+    set({ commandsSinceLastAnalysis: 0 });
   },
 }));
