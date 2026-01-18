@@ -67,6 +67,7 @@ export function Editor() {
     updateAudioTimestamp,
     updateAudioClipTrim,
     removeAudioClip,
+    toggleClipMute,
     // Layer management (single track mode - only mute toggle needed)
     toggleLayerMute,
     // Batch operations
@@ -75,6 +76,16 @@ export function Editor() {
     pasteFromClipboard,
     // Refetch for server-side timeline modifications
     refetch,
+    // Silent update methods (no history - visual only during drag)
+    updateVideoTimestampSilent,
+    updateAudioTimestampSilent,
+    updateClipTrimSilent,
+    updateAudioClipTrimSilent,
+    // Commit methods (single history entry for entire drag operation)
+    commitVideoMove,
+    commitAudioMove,
+    commitVideoTrim,
+    commitAudioTrim,
   } = useTimeline();
 
   // Enable auto-save
@@ -86,7 +97,11 @@ export function Editor() {
   const [currentTime, setCurrentTime] = useState(0);
   const isSeekingRef = useRef(false);
   const currentTimeRef = useRef(currentTime);
-  currentTimeRef.current = currentTime;
+  
+  // Update ref in effect to avoid side effects during render
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
 
   // Paste handler that uses current playhead position
   const handlePaste = useCallback(() => {
@@ -340,11 +355,20 @@ export function Editor() {
         onUpdateAudioTimestamp={updateAudioTimestamp}
         onUpdateAudioTrim={updateAudioClipTrim}
         onRemoveAudio={removeAudioClip}
+        onToggleClipMute={toggleClipMute}
         onDropVideo={handleDropVideo}
         onDropAudio={handleDropAudio}
         onToggleLayerMute={toggleLayerMute}
         currentTime={currentTime}
         onSeek={handleSeek}
+        onUpdateTimestampSilent={updateVideoTimestampSilent}
+        onUpdateTrimSilent={updateClipTrimSilent}
+        onUpdateAudioTimestampSilent={updateAudioTimestampSilent}
+        onUpdateAudioTrimSilent={updateAudioClipTrimSilent}
+        onCommitVideoMove={commitVideoMove}
+        onCommitAudioMove={commitAudioMove}
+        onCommitVideoTrim={commitVideoTrim}
+        onCommitAudioTrim={commitAudioTrim}
       />
 
       {/* Export Progress Modal */}

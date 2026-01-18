@@ -4,10 +4,17 @@ import { useRef, useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { VideoReference } from '@/types/video';
 import { useTimelineStore } from '@/stores/timelineStore';
+import { useContextMenuStore } from '@/stores/contextMenuStore';
 import { getMaxTrimExtension, TimelineClip as TimelineClipType } from '@/lib/timeline-validation';
 
 const SNAP_INCREMENT = 0.05;
 const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) * SNAP_INCREMENT;
+
+interface TrimState {
+  trimStart: number;
+  trimEnd: number;
+  timestamp: number;
+}
 
 interface TimelineClipProps {
   clip: VideoReference;
@@ -18,6 +25,12 @@ interface TimelineClipProps {
   onRemove: (id: string) => void;
   isSelected?: boolean;
   onSelect?: (id: string, shiftKey: boolean) => void;
+  // Silent update methods (no history - visual only during drag)
+  onUpdateTimestampSilent?: (id: string, newTime: number) => void;
+  onUpdateTrimSilent?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
+  // Commit methods (single history entry for entire drag operation)
+  onCommitMove?: (id: string, initialTimestamp: number, finalTimestamp: number) => void;
+  onCommitTrim?: (id: string, initialState: TrimState, finalState: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
 }
 
 export function TimelineClip({
@@ -29,13 +42,15 @@ export function TimelineClip({
   onRemove,
   isSelected,
   onSelect,
+  onUpdateTimestampSilent,
+  onUpdateTrimSilent,
+  onCommitMove,
+  onCommitTrim,
 }: TimelineClipProps) {
   const clipRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isPositionInvalid, setIsPositionInvalid] = useState(false);
-  const [showContextMenu, setShowContextMenu] = useState(false);
-  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const dragStartX = useRef(0);
   const initialTimestamp = useRef(0);
   const pendingTimestamp = useRef(0);
@@ -43,19 +58,26 @@ export function TimelineClip({
   const isPositionValidOrAutoTrimmable = useTimelineStore((state) => state.isPositionValidOrAutoTrimmable);
   const updateVideoTimestampWithAutoTrim = useTimelineStore((state) => state.updateVideoTimestampWithAutoTrim);
 
+  const contextMenu = useContextMenuStore();
+  const showContextMenu = contextMenu.isOpen && contextMenu.clipId === clip.id && contextMenu.clipType === 'video';
+
   // Close context menu when clicking outside
   useEffect(() => {
     if (!showContextMenu) return;
-    const handleClick = () => setShowContextMenu(false);
+    const handleClick = () => contextMenu.closeContextMenu();
     window.addEventListener('click', handleClick);
     return () => window.removeEventListener('click', handleClick);
-  }, [showContextMenu]);
+  }, [showContextMenu, contextMenu]);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenuPos({ x: e.clientX, y: e.clientY });
-    setShowContextMenu(true);
+    contextMenu.openContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      clipId: clip.id,
+      clipType: 'video',
+    });
     onSelect?.(clip.id, false);
   };
 
@@ -83,12 +105,23 @@ export function TimelineClip({
       const valid = isPositionValidOrAutoTrimmable(clip.id, newTimestamp, clip.duration, clip.trimStart, clip.trimEnd);
       setIsPositionInvalid(!valid);
 
-      onUpdateTimestamp(clip.id, newTimestamp);
+      // Use silent update during drag (no history) if available, otherwise fallback
+      if (onUpdateTimestampSilent) {
+        onUpdateTimestampSilent(clip.id, newTimestamp);
+      } else {
+        onUpdateTimestamp(clip.id, newTimestamp);
+      }
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
       setIsPositionInvalid(false);
+
+      // Commit the move with a single history entry if commit method is available
+      if (onCommitMove) {
+        onCommitMove(clip.id, initialTimestamp.current, pendingTimestamp.current);
+      }
+
       // Apply auto-trim if needed on release
       updateVideoTimestampWithAutoTrim(clip.id, pendingTimestamp.current);
       document.removeEventListener('mousemove', handleMouseMove);
@@ -106,7 +139,19 @@ export function TimelineClip({
 
     const startX = e.clientX;
     const startTrimStart = clip.trimStart ?? 0;
+    const startTrimEnd = clip.trimEnd ?? 0;
     const startTimestamp = clip.timestamp;
+
+    // Track initial state for commit
+    const initialTrimState: TrimState = {
+      trimStart: startTrimStart,
+      trimEnd: startTrimEnd,
+      timestamp: startTimestamp,
+    };
+
+    // Track final state for commit
+    let finalTrimStart = startTrimStart;
+    let finalTimestamp = startTimestamp;
 
     // Calculate max extension based on adjacent clips
     const timelineClips: TimelineClipType[] = clips.map((c) => ({
@@ -130,11 +175,26 @@ export function TimelineClip({
 
       const newTimestamp = startTimestamp + (clampedTrimStart - startTrimStart);
 
-      onUpdateTrim(clip.id, { trimStart: clampedTrimStart, timestamp: snapToGrid(newTimestamp) });
+      // Track final values for commit
+      finalTrimStart = clampedTrimStart;
+      finalTimestamp = snapToGrid(newTimestamp);
+
+      // Use silent update during resize (no history) if available, otherwise fallback
+      if (onUpdateTrimSilent) {
+        onUpdateTrimSilent(clip.id, { trimStart: clampedTrimStart, timestamp: finalTimestamp });
+      } else {
+        onUpdateTrim(clip.id, { trimStart: clampedTrimStart, timestamp: finalTimestamp });
+      }
     };
 
     const handleMouseUp = () => {
       setIsResizing(false);
+
+      // Commit the trim with a single history entry if commit method is available
+      if (onCommitTrim) {
+        onCommitTrim(clip.id, initialTrimState, { trimStart: finalTrimStart, timestamp: finalTimestamp });
+      }
+
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
@@ -149,7 +209,19 @@ export function TimelineClip({
     setIsResizing(true);
 
     const startX = e.clientX;
+    const startTrimStart = clip.trimStart ?? 0;
     const startTrimEnd = clip.trimEnd ?? 0;
+    const startTimestamp = clip.timestamp;
+
+    // Track initial state for commit
+    const initialTrimState: TrimState = {
+      trimStart: startTrimStart,
+      trimEnd: startTrimEnd,
+      timestamp: startTimestamp,
+    };
+
+    // Track final state for commit
+    let finalTrimEnd = startTrimEnd;
 
     // Calculate max extension based on adjacent clips
     const timelineClips: TimelineClipType[] = clips.map((c) => ({
@@ -171,11 +243,25 @@ export function TimelineClip({
       const maxTrim = clip.duration - (clip.trimStart ?? 0) - 0.1; // Keep min 0.1s visible
       const clampedTrimEnd = snapToGrid(Math.max(minTrimEnd, Math.min(newTrimEnd, maxTrim)));
 
-      onUpdateTrim(clip.id, { trimEnd: clampedTrimEnd });
+      // Track final value for commit
+      finalTrimEnd = clampedTrimEnd;
+
+      // Use silent update during resize (no history) if available, otherwise fallback
+      if (onUpdateTrimSilent) {
+        onUpdateTrimSilent(clip.id, { trimEnd: clampedTrimEnd });
+      } else {
+        onUpdateTrim(clip.id, { trimEnd: clampedTrimEnd });
+      }
     };
 
     const handleMouseUp = () => {
       setIsResizing(false);
+
+      // Commit the trim with a single history entry if commit method is available
+      if (onCommitTrim) {
+        onCommitTrim(clip.id, initialTrimState, { trimEnd: finalTrimEnd });
+      }
+
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
@@ -239,14 +325,14 @@ export function TimelineClip({
       {showContextMenu && (
         <div
           className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg py-1 z-50"
-          style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
           <button
             className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700"
             onClick={() => {
               onRemove(clip.id);
-              setShowContextMenu(false);
+              contextMenu.closeContextMenu();
             }}
           >
             Delete

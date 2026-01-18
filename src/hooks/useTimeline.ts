@@ -14,6 +14,7 @@ import {
   createMoveAudioCommand,
   createTrimAudioCommand,
   createToggleMuteCommand,
+  createToggleClipMuteCommand,
   createBatchDeleteCommand,
   createBatchPasteCommand,
 } from '@/lib/commands';
@@ -120,20 +121,26 @@ export function useTimeline() {
 
   const updateAudioTimestamp = useCallback(
     (id: string, newTime: number, layerId?: string, newDepth?: number) => {
+      console.log('[useTimeline] updateAudioTimestamp called', { id, newTime, layerId, newDepth });
       const store = useAudioTimelineStore.getState();
       let targetLayerId = layerId;
       if (!targetLayerId) {
         const layer = store.audioLayers.find((l) => l.clips.some((c) => c.id === id));
         targetLayerId = layer?.id;
       }
-      if (!targetLayerId) return;
+      if (!targetLayerId) {
+        console.log('[useTimeline] updateAudioTimestamp - no target layer found!');
+        return;
+      }
 
+      console.log('[useTimeline] creating MoveAudioCommand', { clipId: id, layerId: targetLayerId, newTimestamp: newTime, newDepth });
       const command = createMoveAudioCommand({
         clipId: id,
         layerId: targetLayerId,
         newTimestamp: newTime,
         newDepth,
       });
+      console.log('[useTimeline] executing command');
       execute(command);
     },
     [execute]
@@ -188,12 +195,155 @@ export function useTimeline() {
     [execute]
   );
 
+  const toggleClipMute = useCallback(
+    (clipId: string, layerId?: string) => {
+      const store = useAudioTimelineStore.getState();
+      let targetLayerId = layerId;
+      if (!targetLayerId) {
+        const layer = store.audioLayers.find((l) => l.clips.some((c) => c.id === clipId));
+        targetLayerId = layer?.id;
+      }
+      if (!targetLayerId) return;
+
+      const command = createToggleClipMuteCommand({ clipId, layerId: targetLayerId });
+      execute(command);
+    },
+    [execute]
+  );
+
   const renameLayer = useCallback(
     (_layerId: string, _name: string) => {
       // No-op: Single audio track mode - track is always named "Audio"
     },
     []
   );
+
+  // === Silent update methods - visual only, no history ===
+  // These are used during drag operations to provide visual feedback
+  // without creating a history entry on every mouse move
+
+  const updateVideoTimestampSilent = useCallback((id: string, newTime: number) => {
+    const store = useTimelineStore.getState();
+    useTimelineStore.setState({
+      clips: store.clips.map((c) =>
+        c.id === id ? { ...c, timestamp: Math.max(0, newTime) } : c
+      ),
+    });
+  }, []);
+
+  const updateAudioTimestampSilent = useCallback((id: string, newTime: number, layerId: string, newDepth?: number) => {
+    const store = useAudioTimelineStore.getState();
+    useAudioTimelineStore.setState({
+      audioLayers: store.audioLayers.map((l) =>
+        l.id === layerId
+          ? {
+              ...l,
+              clips: l.clips.map((c) =>
+                c.id === id
+                  ? {
+                      ...c,
+                      timestamp: Math.max(0, newTime),
+                      ...(newDepth !== undefined ? { depth: newDepth } : {}),
+                    }
+                  : c
+              ),
+            }
+          : l
+      ),
+    });
+  }, []);
+
+  const updateClipTrimSilent = useCallback((id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => {
+    const store = useTimelineStore.getState();
+    useTimelineStore.setState({
+      clips: store.clips.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              trimStart: updates.trimStart ?? c.trimStart,
+              trimEnd: updates.trimEnd ?? c.trimEnd,
+              timestamp: updates.timestamp ?? c.timestamp,
+            }
+          : c
+      ),
+    });
+  }, []);
+
+  const updateAudioClipTrimSilent = useCallback((id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId: string) => {
+    const store = useAudioTimelineStore.getState();
+    useAudioTimelineStore.setState({
+      audioLayers: store.audioLayers.map((l) =>
+        l.id === layerId
+          ? {
+              ...l,
+              clips: l.clips.map((c) =>
+                c.id === id
+                  ? {
+                      ...c,
+                      trimStart: updates.trimStart ?? c.trimStart,
+                      trimEnd: updates.trimEnd ?? c.trimEnd,
+                      timestamp: updates.timestamp ?? c.timestamp,
+                    }
+                  : c
+              ),
+            }
+          : l
+      ),
+    });
+  }, []);
+
+  // === Commit methods - create single history entry with explicit initial/final state ===
+  // These are called on mouseup to create a single undo entry for the entire drag operation
+
+  const commitVideoMove = useCallback((id: string, initialTimestamp: number, finalTimestamp: number) => {
+    if (initialTimestamp === finalTimestamp) return;
+    const command = createMoveVideoCommand({ clipId: id, newTimestamp: finalTimestamp, originalTimestamp: initialTimestamp });
+    execute(command);
+  }, [execute]);
+
+  const commitAudioMove = useCallback((id: string, layerId: string, initialTimestamp: number, finalTimestamp: number, initialDepth?: number, finalDepth?: number) => {
+    if (initialTimestamp === finalTimestamp && initialDepth === finalDepth) return;
+    const command = createMoveAudioCommand({
+      clipId: id,
+      layerId,
+      newTimestamp: finalTimestamp,
+      newDepth: finalDepth,
+      originalTimestamp: initialTimestamp,
+      originalDepth: initialDepth,
+    });
+    execute(command);
+  }, [execute]);
+
+  const commitVideoTrim = useCallback((
+    id: string,
+    initialState: { trimStart: number; trimEnd: number; timestamp: number },
+    finalState: { trimStart?: number; trimEnd?: number; timestamp?: number }
+  ) => {
+    // Check if anything actually changed
+    const trimStartChanged = finalState.trimStart !== undefined && finalState.trimStart !== initialState.trimStart;
+    const trimEndChanged = finalState.trimEnd !== undefined && finalState.trimEnd !== initialState.trimEnd;
+    const timestampChanged = finalState.timestamp !== undefined && finalState.timestamp !== initialState.timestamp;
+    if (!trimStartChanged && !trimEndChanged && !timestampChanged) return;
+
+    const command = createTrimVideoCommand({ clipId: id, updates: finalState, originalValues: initialState });
+    execute(command);
+  }, [execute]);
+
+  const commitAudioTrim = useCallback((
+    id: string,
+    layerId: string,
+    initialState: { trimStart: number; trimEnd: number; timestamp: number },
+    finalState: { trimStart?: number; trimEnd?: number; timestamp?: number }
+  ) => {
+    // Check if anything actually changed
+    const trimStartChanged = finalState.trimStart !== undefined && finalState.trimStart !== initialState.trimStart;
+    const trimEndChanged = finalState.trimEnd !== undefined && finalState.trimEnd !== initialState.trimEnd;
+    const timestampChanged = finalState.timestamp !== undefined && finalState.timestamp !== initialState.timestamp;
+    if (!trimStartChanged && !trimEndChanged && !timestampChanged) return;
+
+    const command = createTrimAudioCommand({ clipId: id, layerId, updates: finalState, originalValues: initialState });
+    execute(command);
+  }, [execute]);
 
   // Batch delete selected clips
   const batchDeleteSelected = useCallback(() => {
@@ -326,6 +476,7 @@ export function useTimeline() {
     updateAudioTimestamp,
     updateAudioClipTrim,
     removeAudioClip,
+    toggleClipMute,
     // Layer management
     addLayer,
     removeLayer,
@@ -341,5 +492,15 @@ export function useTimeline() {
     pasteFromClipboard,
     // Refetch
     refetch,
+    // Silent update methods (no history - visual only during drag)
+    updateVideoTimestampSilent,
+    updateAudioTimestampSilent,
+    updateClipTrimSilent,
+    updateAudioClipTrimSilent,
+    // Commit methods (single history entry for entire drag operation)
+    commitVideoMove,
+    commitAudioMove,
+    commitVideoTrim,
+    commitAudioTrim,
   };
 }

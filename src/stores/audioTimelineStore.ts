@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 import { AudioReference, AudioLayer } from '@/types/audio';
+import {
+  TimelineClip,
+  calculateAutoTrim,
+  findNearestValidPosition,
+  isPositionValidOrAutoTrimmable
+} from '@/lib/timeline-validation';
 
 const generateId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -34,6 +40,7 @@ interface AudioTimelineState {
   updateAudioTimestampWithAutoTrim: (id: string, newTime: number, layerId: string) => void;
   updateAudioClipTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId?: string) => void;
   updateAudioClipDepth: (id: string, newDepth: number, layerId?: string) => void;
+  toggleClipMute: (id: string, layerId?: string) => void;
   removeAudioClip: (id: string, layerId?: string) => void;
   removeClipsByAudioId: (audioId: string) => void;
 
@@ -46,7 +53,7 @@ interface AudioTimelineState {
 
   // Overlap validation helpers (layer-specific)
   isPositionValid: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number, layerId?: string) => boolean;
-  isPositionValidOrAutoTrimmable: (clipId: string, timestamp: number, duration: number, layerId: string, trimStart?: number, trimEnd?: number) => boolean;
+  isPositionValidOrAutoTrimmable: (clipId: string, timestamp: number, duration: number, layerId: string, trimStart?: number, trimEnd?: number, depth?: number) => boolean;
   getValidPosition: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number, layerId?: string) => number;
 }
 
@@ -236,7 +243,14 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
   updateAudioTimestampWithAutoTrim: (id, newTime, layerId) => {
     const { audioLayers } = get();
 
-    const targetLayer = audioLayers.find((l) => l.id === layerId);
+    // Try to find the layer by ID first
+    let targetLayer = audioLayers.find((l) => l.id === layerId);
+
+    // If not found, search for the clip in all layers (handles stale layer ID case)
+    if (!targetLayer) {
+      targetLayer = audioLayers.find((l) => l.clips.some((c) => c.id === id));
+    }
+
     if (!targetLayer) return;
 
     const clip = targetLayer.clips.find((c) => c.id === id);
@@ -248,16 +262,20 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
       duration: clip.duration,
       trimStart: clip.trimStart,
       trimEnd: clip.trimEnd,
+      depth: clip.depth ?? 0,
     };
 
-    // Check if auto-trim can resolve any overlap within this layer
+    // Check if auto-trim can resolve any overlap within this layer (at the same depth)
     const autoTrimResult = calculateAutoTrim(targetLayer.clips as TimelineClip[], testClip, id);
+
+    // Use the actual target layer ID (may differ from passed layerId if layer was found by clip search)
+    const actualLayerId = targetLayer.id;
 
     if (autoTrimResult.isValid && autoTrimResult.clipToTrim) {
       // Apply auto-trim: update both the moved clip and the trimmed clip
       set((state) => ({
         audioLayers: state.audioLayers.map((l) =>
-          l.id === layerId
+          l.id === actualLayerId
             ? {
                 ...l,
                 clips: l.clips.map((c) => {
@@ -278,7 +296,7 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
       // No overlap, just update position
       set((state) => ({
         audioLayers: state.audioLayers.map((l) =>
-          l.id === layerId
+          l.id === actualLayerId
             ? {
                 ...l,
                 clips: l.clips.map((c) =>
@@ -294,7 +312,7 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
       const validTimestamp = findNearestValidPosition(targetLayer.clips as TimelineClip[], testClip, id);
       set((state) => ({
         audioLayers: state.audioLayers.map((l) =>
-          l.id === layerId
+          l.id === actualLayerId
             ? {
                 ...l,
                 clips: l.clips.map((c) =>
@@ -358,6 +376,35 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
               clips: l.clips.map((c) =>
                 c.id === id
                   ? { ...c, depth: newDepth }
+                  : c
+              ),
+            }
+          : l
+      ),
+      isDirty: true,
+    }));
+  },
+
+  toggleClipMute: (id, layerId) => {
+    const { audioLayers } = get();
+
+    // Find the layer containing this clip
+    let targetLayer: AudioLayer | undefined;
+    if (layerId) {
+      targetLayer = audioLayers.find((l) => l.id === layerId);
+    } else {
+      targetLayer = audioLayers.find((l) => l.clips.some((c) => c.id === id));
+    }
+    if (!targetLayer) return;
+
+    set((state) => ({
+      audioLayers: state.audioLayers.map((l) =>
+        l.id === targetLayer!.id
+          ? {
+              ...l,
+              clips: l.clips.map((c) =>
+                c.id === id
+                  ? { ...c, muted: !c.muted }
                   : c
               ),
             }
@@ -466,7 +513,8 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
     const { audioLayers } = get();
     return audioLayers
       .filter((l) => !l.muted)
-      .flatMap((l) => l.clips);
+      .flatMap((l) => l.clips)
+      .filter((c) => !c.muted);
   },
 
   // Overlap validation helpers - Always return valid since clips can now overlap
@@ -475,11 +523,18 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
     return true;
   },
 
-  isPositionValidOrAutoTrimmable: (clipId, timestamp, duration, layerId, trimStart, trimEnd) => {
+  isPositionValidOrAutoTrimmable: (clipId, timestamp, duration, layerId, trimStart, trimEnd, depth) => {
     const { audioLayers } = get();
 
     const targetLayer = audioLayers.find((l) => l.id === layerId);
     if (!targetLayer) return true;
+
+    // If depth is not provided, try to get it from the existing clip
+    let clipDepth = depth;
+    if (clipDepth === undefined) {
+      const existingClip = targetLayer.clips.find((c) => c.id === clipId);
+      clipDepth = existingClip?.depth ?? 0;
+    }
 
     const testClip: TimelineClip = {
       id: clipId,
@@ -487,6 +542,7 @@ export const useAudioTimelineStore = create<AudioTimelineState>((set, get) => ({
       duration,
       trimStart,
       trimEnd,
+      depth: clipDepth,
     };
     return isPositionValidOrAutoTrimmable(targetLayer.clips as TimelineClip[], testClip, clipId);
   },

@@ -12,6 +12,7 @@ export { createAddAudioCommand } from './audio/addAudioCommand';
 export { createRemoveAudioCommand } from './audio/removeAudioCommand';
 export { createMoveAudioCommand } from './audio/moveAudioCommand';
 export { createTrimAudioCommand } from './audio/trimAudioCommand';
+export { createToggleClipMuteCommand } from './audio/toggleClipMuteCommand';
 
 // Layer commands - mute toggle still works in single track mode
 export { createToggleMuteCommand } from './layer/toggleMuteCommand';

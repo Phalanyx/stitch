@@ -8,24 +8,35 @@ interface TrimVideoParams {
     trimEnd?: number;
     timestamp?: number;
   };
+  originalValues?: {
+    trimStart: number;
+    trimEnd: number;
+    timestamp: number;
+  };
 }
 
 export function createTrimVideoCommand(params: TrimVideoParams): Command {
-  const { clipId, updates } = params;
+  const { clipId, updates, originalValues: providedOriginalValues } = params;
 
-  // Capture original trim values at command creation time
-  const store = useTimelineStore.getState();
-  const clip = store.clips.find((c) => c.id === clipId);
+  // Use provided original values or capture from current state
+  let originalValues: { trimStart: number; trimEnd: number; timestamp: number };
 
-  if (!clip) {
-    throw new Error(`Clip with id ${clipId} not found`);
+  if (providedOriginalValues !== undefined) {
+    originalValues = providedOriginalValues;
+  } else {
+    const store = useTimelineStore.getState();
+    const clip = store.clips.find((c) => c.id === clipId);
+
+    if (!clip) {
+      throw new Error(`Clip with id ${clipId} not found`);
+    }
+
+    originalValues = {
+      trimStart: clip.trimStart ?? 0,
+      trimEnd: clip.trimEnd ?? 0,
+      timestamp: clip.timestamp,
+    };
   }
-
-  const originalValues = {
-    trimStart: clip.trimStart ?? 0,
-    trimEnd: clip.trimEnd ?? 0,
-    timestamp: clip.timestamp,
-  };
 
   return {
     id: crypto.randomUUID(),

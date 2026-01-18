@@ -1,12 +1,18 @@
 'use client';
 
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { Film, Music, Volume2, VolumeX } from 'lucide-react';
+import { Film, Volume2, VolumeX } from 'lucide-react';
 import { TimelineClip } from './TimelineClip';
 import { AudioTimelineClip, AUDIO_CLIP_HEIGHT, AUDIO_CLIP_PADDING, AUDIO_CLIP_GAP } from './AudioTimelineClip';
 import { VideoReference } from '@/types/video';
 import { AudioLayer } from '@/types/audio';
 import { useSelectionStore, SelectedClip } from '@/stores/selectionStore';
+
+interface TrimState {
+  trimStart: number;
+  trimEnd: number;
+  timestamp: number;
+}
 
 interface TimelineProps {
   clips: VideoReference[];
@@ -18,11 +24,22 @@ interface TimelineProps {
   onUpdateAudioTimestamp?: (id: string, newTime: number, layerId?: string, newDepth?: number) => void;
   onUpdateAudioTrim?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId?: string) => void;
   onRemoveAudio?: (id: string, layerId?: string) => void;
+  onToggleClipMute?: (id: string, layerId?: string) => void;
   onDropVideo?: (video: { id: string; url: string; duration?: number; timestamp: number }) => void;
   onDropAudio?: (audio: { id: string; url: string; duration?: number; timestamp: number }, layerId: string) => void;
   onToggleLayerMute?: (layerId: string) => void;
   currentTime: number;
   onSeek: (time: number) => void;
+  // Silent update methods (no history - visual only during drag)
+  onUpdateTimestampSilent?: (id: string, newTime: number) => void;
+  onUpdateTrimSilent?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
+  onUpdateAudioTimestampSilent?: (id: string, newTime: number, layerId: string, newDepth?: number) => void;
+  onUpdateAudioTrimSilent?: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }, layerId: string) => void;
+  // Commit methods (single history entry for entire drag operation)
+  onCommitVideoMove?: (id: string, initialTimestamp: number, finalTimestamp: number) => void;
+  onCommitAudioMove?: (id: string, layerId: string, initialTimestamp: number, finalTimestamp: number, initialDepth?: number, finalDepth?: number) => void;
+  onCommitVideoTrim?: (id: string, initialState: TrimState, finalState: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
+  onCommitAudioTrim?: (id: string, layerId: string, initialState: TrimState, finalState: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
 }
 
 const PIXELS_PER_SECOND = 50;
@@ -101,17 +118,27 @@ function calculateClipDepths(clips: { id: string; timestamp: number; duration: n
 export function Timeline({
   clips = [],
   audioLayers = [],
+  activeLayerId,
   onUpdateTimestamp,
   onUpdateTrim,
   onRemove,
   onUpdateAudioTimestamp,
   onUpdateAudioTrim,
   onRemoveAudio,
+  onToggleClipMute,
   onDropVideo,
   onDropAudio,
   onToggleLayerMute,
   currentTime,
   onSeek,
+  onUpdateTimestampSilent,
+  onUpdateTrimSilent,
+  onUpdateAudioTimestampSilent,
+  onUpdateAudioTrimSilent,
+  onCommitVideoMove,
+  onCommitAudioMove,
+  onCommitVideoTrim,
+  onCommitAudioTrim,
 }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -122,12 +149,12 @@ export function Timeline({
   const [trackLabelWidth, setTrackLabelWidth] = useState(DEFAULT_TRACK_LABEL_WIDTH);
 
   // Selection store
-  const { selectedClips, selectClip, clearSelection, selectRange, lastSelectedId, isSelected } = useSelectionStore();
+  const { selectClip, clearSelection, selectRange, lastSelectedId, isSelected } = useSelectionStore();
   const [isResizingTrackLabel, setIsResizingTrackLabel] = useState(false);
 
   // Get the single audio layer (there's only one in single track mode)
   const audioLayer = audioLayers[0];
-  const audioClips = audioLayer?.clips ?? [];
+  const audioClips = useMemo(() => audioLayer?.clips ?? [], [audioLayer]);
 
   // Calculate depths for overlapping clips
   const clipDepths = useMemo(() => calculateClipDepths(audioClips), [audioClips]);
@@ -297,7 +324,7 @@ export function Timeline({
         const rangeClips = allClipsSorted
           .slice(start, end + 1)
           .filter((c) => c.type === 'video')
-          .map(({ timestamp, ...clip }) => clip);
+          .map(({ timestamp: _timestamp, ...clip }) => clip);
         selectRange(rangeClips);
         return;
       }
@@ -318,7 +345,7 @@ export function Timeline({
         const rangeClips = allClipsSorted
           .slice(start, end + 1)
           .filter((c) => c.type === 'audio')
-          .map(({ timestamp, ...clip }) => clip);
+          .map(({ timestamp: _timestamp, ...clip }) => clip);
         selectRange(rangeClips);
         return;
       }
@@ -403,7 +430,6 @@ export function Timeline({
             >
               {audioLayer.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
             </button>
-            <Music size={14} className="text-green-400 flex-shrink-0" />
             <span className={`text-xs truncate flex-1 min-w-0 ${audioLayer.muted ? 'text-gray-500' : 'text-gray-400'}`}>
               Audio
             </span>
@@ -474,6 +500,10 @@ export function Timeline({
                 onRemove={onRemove}
                 isSelected={isSelected(clip.id)}
                 onSelect={handleVideoSelect}
+                onUpdateTimestampSilent={onUpdateTimestampSilent}
+                onUpdateTrimSilent={onUpdateTrimSilent}
+                onCommitMove={onCommitVideoMove}
+                onCommitTrim={onCommitVideoTrim}
               />
             ))}
           </div>
@@ -482,9 +512,9 @@ export function Timeline({
           {audioLayer && (
             <div
               className={`absolute left-0 right-0 border-b border-gray-700 transition-colors ${
-                isDraggingOverAudio[layer.id] ? 'bg-violet-500/20' : ''
-              } ${activeLayerId === layer.id ? 'bg-violet-900/10' : ''} ${
-                layer.muted ? 'opacity-50' : ''
+                isDraggingOverAudio ? 'bg-violet-500/20' : ''
+              } ${activeLayerId === audioLayer.id ? 'bg-violet-900/10' : ''} ${
+                audioLayer.muted ? 'opacity-50' : ''
               }`}
               style={{
                 top: `${TIME_MARKERS_HEIGHT + VIDEO_TRACK_HEIGHT}px`,
@@ -501,14 +531,20 @@ export function Timeline({
                 <AudioTimelineClip
                   key={clip.id}
                   clip={clip}
+                  layerClips={audioLayer.clips}
                   layerId={audioLayer.id}
                   pixelsPerSecond={PIXELS_PER_SECOND}
                   onUpdateTimestamp={onUpdateAudioTimestamp!}
                   onUpdateTrim={onUpdateAudioTrim!}
                   onRemove={onRemoveAudio!}
+                  onToggleMute={onToggleClipMute}
                   isSelected={isSelected(clip.id)}
                   onSelect={handleAudioSelect}
                   depth={clipDepths.get(clip.id) ?? 0}
+                  onUpdateTimestampSilent={onUpdateAudioTimestampSilent}
+                  onUpdateTrimSilent={onUpdateAudioTrimSilent}
+                  onCommitMove={onCommitAudioMove}
+                  onCommitTrim={onCommitAudioTrim}
                 />
               ))}
             </div>

@@ -9,25 +9,36 @@ interface TrimAudioParams {
     trimEnd?: number;
     timestamp?: number;
   };
+  originalValues?: {
+    trimStart: number;
+    trimEnd: number;
+    timestamp: number;
+  };
 }
 
 export function createTrimAudioCommand(params: TrimAudioParams): Command {
-  const { clipId, layerId, updates } = params;
+  const { clipId, layerId, updates, originalValues: providedOriginalValues } = params;
 
-  // Capture original trim values at command creation time
-  const store = useAudioTimelineStore.getState();
-  const layer = store.audioLayers.find((l) => l.id === layerId);
-  const clip = layer?.clips.find((c) => c.id === clipId);
+  // Use provided original values or capture from current state
+  let originalValues: { trimStart: number; trimEnd: number; timestamp: number };
 
-  if (!clip) {
-    throw new Error(`Audio clip with id ${clipId} not found in layer ${layerId}`);
+  if (providedOriginalValues !== undefined) {
+    originalValues = providedOriginalValues;
+  } else {
+    const store = useAudioTimelineStore.getState();
+    const layer = store.audioLayers.find((l) => l.id === layerId);
+    const clip = layer?.clips.find((c) => c.id === clipId);
+
+    if (!clip) {
+      throw new Error(`Audio clip with id ${clipId} not found in layer ${layerId}`);
+    }
+
+    originalValues = {
+      trimStart: clip.trimStart ?? 0,
+      trimEnd: clip.trimEnd ?? 0,
+      timestamp: clip.timestamp,
+    };
   }
-
-  const originalValues = {
-    trimStart: clip.trimStart ?? 0,
-    trimEnd: clip.trimEnd ?? 0,
-    timestamp: clip.timestamp,
-  };
 
   return {
     id: crypto.randomUUID(),

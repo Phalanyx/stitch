@@ -4,20 +4,26 @@ import { useTimelineStore } from '@/stores/timelineStore';
 interface MoveVideoParams {
   clipId: string;
   newTimestamp: number;
+  originalTimestamp?: number; // If provided, use this for undo instead of current state
 }
 
 export function createMoveVideoCommand(params: MoveVideoParams): Command {
-  const { clipId, newTimestamp } = params;
+  const { clipId, newTimestamp, originalTimestamp: providedOriginalTimestamp } = params;
 
-  // Capture original timestamp at command creation time
-  const store = useTimelineStore.getState();
-  const clip = store.clips.find((c) => c.id === clipId);
+  // Use provided original timestamp or capture from current state
+  let originalTimestamp: number;
+  if (providedOriginalTimestamp !== undefined) {
+    originalTimestamp = providedOriginalTimestamp;
+  } else {
+    const store = useTimelineStore.getState();
+    const clip = store.clips.find((c) => c.id === clipId);
 
-  if (!clip) {
-    throw new Error(`Clip with id ${clipId} not found`);
+    if (!clip) {
+      throw new Error(`Clip with id ${clipId} not found`);
+    }
+
+    originalTimestamp = clip.timestamp;
   }
-
-  const originalTimestamp = clip.timestamp;
 
   return {
     id: crypto.randomUUID(),

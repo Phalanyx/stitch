@@ -19,6 +19,9 @@ export const TOOL_DEFINITIONS = [
   { name: 'create_audio_from_text', description: 'Generate speech audio from text. Args: {text}.' },
   { name: 'add_audio', description: 'Add audio to timeline. Args: {audioId, timestamp?}.' },
   { name: 'remove_audio', description: 'Remove audio from timeline. Args: {clipId}.' },
+
+  // Agent tools
+  { name: 'suggest_next_action', description: 'Suggest the next action for the user. Args: {phase: string}.' },
 ] as const;
 
 export type ToolName = (typeof TOOL_DEFINITIONS)[number]['name'];
@@ -244,6 +247,16 @@ export function createClientToolRegistry(options?: {
         return errorOutput('Missing clipId argument.');
       }
       return modifyTimeline('remove_audio', { clipId });
+    },
+
+    // Agent tools
+    suggest_next_action: async (args) => {
+      const phase = String(args.phase ?? 'unknown');
+      return {
+        status: 'ok',
+        changed: false,
+        output: `Suggested next action for phase "${phase}": Review timeline or search for more clips.`,
+      };
     },
   };
 }

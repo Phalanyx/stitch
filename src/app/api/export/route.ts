@@ -23,7 +23,7 @@ if (!ffmpegPath) {
     if (pathResult) {
       ffmpegPath = pathResult.split('\n')[0].trim();
     }
-  } catch (error) {
+  } catch {
     // ffmpeg not in PATH, will try common locations below
   }
 
@@ -66,10 +66,11 @@ async function cleanupTempDir(tempDir: string, maxRetries = 3, delayMs = 500): P
       }
       fs.rmSync(tempDir, { recursive: true, force: true });
       return; // Success
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: string; message: string };
       // If it's the last attempt or not a busy/locked error, log it
-      if (attempt === maxRetries - 1 || (error.code !== 'EBUSY' && error.code !== 'EMFILE' && error.code !== 'ENFILE')) {
-        console.warn(`[Cleanup] Failed to delete temp directory after ${attempt + 1} attempts:`, error.message);
+      if (attempt === maxRetries - 1 || (err.code !== 'EBUSY' && err.code !== 'EMFILE' && err.code !== 'ENFILE')) {
+        console.warn(`[Cleanup] Failed to delete temp directory after ${attempt + 1} attempts:`, err.message);
         // Don't throw - temp files will be cleaned up by OS eventually
         return;
       }
@@ -194,7 +195,7 @@ export async function POST(request: NextRequest) {
             .setDuration(clip.duration - trimStart - trimEnd)
             .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
             .output(trimmedPath)
-            .on('end', resolve)
+            .on('end', () => resolve())
             .on('error', reject)
             .run();
         });
@@ -220,7 +221,7 @@ export async function POST(request: NextRequest) {
           .inputOptions(['-f', 'concat', '-safe', '0'])
           .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
           .output(concatenatedVideoPath)
-          .on('end', resolve)
+          .on('end', () => resolve())
           .on('error', reject)
           .run();
       });

@@ -7,6 +7,7 @@ export interface AudioReference {
   trimStart?: number;  // Seconds trimmed from start (default 0)
   trimEnd?: number;    // Seconds trimmed from end (default 0)
   depth?: number;      // Manual depth assignment (0 = bottom row)
+  muted?: boolean;     // Individual clip mute state (default false)
 }
 
 export interface AudioLayer {
