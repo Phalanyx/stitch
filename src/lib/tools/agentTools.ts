@@ -17,7 +17,7 @@ export const TOOL_DEFINITIONS = [
   { name: 'create_transition', description: 'Generate a smooth transition between two adjacent timeline clips. Args: {precedingPosition, succeedingPosition} (1-based positions from list_clips), plus optional prompt?, durationSeconds?. Call list_clips first to see clip positions.' },
 
   // Audio tools
-  { name: 'create_audio_from_text', description: 'Generate speech audio from text. Args: {text}.' },
+  { name: 'create_audio_from_text', description: 'Generate speech audio from text with exact duration. Args: {text, targetDuration (required, seconds)}. Audio will be stretched or truncated to match targetDuration.' },
   { name: 'add_audio', description: 'Add audio to timeline. Args: {audioId, timestamp?}.' },
   { name: 'remove_audio', description: 'Remove audio from timeline. Args: {clipId}.' },
 ] as const;
@@ -305,10 +305,14 @@ export function createClientToolRegistry(options?: {
       if (!text) {
         return errorOutput('Missing text argument.');
       }
+      const targetDuration = args.targetDuration !== undefined ? Number(args.targetDuration) : undefined;
+      if (targetDuration === undefined || targetDuration <= 0) {
+        return errorOutput('Missing or invalid targetDuration argument (must be positive number in seconds).');
+      }
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, targetDuration }),
       });
       const data = (await response.json()) as {
         audio?: AudioMetadata;

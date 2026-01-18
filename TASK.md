@@ -5,6 +5,6 @@
   - Use the user’s described clip positions to identify the preceding and succeeding timeline clips.
   - Extract the last frame of the preceding clip and the first frame of the succeeding clip.
   - Send those frames to VEO 3 to generate a smooth fade transition.
-  - Automatically splice the generated transition video between the two clips.
+  - Automatically splice the generated transition video between the two clips using 'move_video' and 'add_video'.
 - Inputs:
   - Identifiers for the preceding and succeeding clips (their order/position in the current timeline).

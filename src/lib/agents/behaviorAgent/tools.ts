@@ -82,6 +82,10 @@ export function createToolRegistry(): ToolRegistry {
       if (text.length > 5000) {
         return errorResponse('Text exceeds maximum length of 5000 characters.');
       }
+      const targetDuration = args.targetDuration !== undefined ? Number(args.targetDuration) : undefined;
+      if (targetDuration === undefined || targetDuration <= 0) {
+        return errorResponse('Missing or invalid targetDuration (must be positive number in seconds).');
+      }
       if (!context.userId) {
         return errorResponse('Missing user context.');
       }
@@ -93,6 +97,7 @@ export function createToolRegistry(): ToolRegistry {
         const audio = await textToSpeechAndSave(context.userId, text, {
           voiceId,
           fileName,
+          targetDuration,
         });
 
         return {

@@ -1,6 +1,43 @@
 import { v4 as uuid } from 'uuid';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { prisma } from '@/lib/prisma';
+import ffmpeg from 'fluent-ffmpeg';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { execSync } from 'child_process';
+
+// Try to find ffmpeg in common locations
+function findFfmpegPath(): string | null {
+  const commonPaths = [
+    '/usr/local/bin/ffmpeg',
+    '/usr/bin/ffmpeg',
+    '/opt/homebrew/bin/ffmpeg',
+  ];
+
+  for (const p of commonPaths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+
+  try {
+    const result = execSync('which ffmpeg', { encoding: 'utf8' }).trim();
+    if (result && fs.existsSync(result)) {
+      return result;
+    }
+  } catch {
+    // which command failed, continue
+  }
+
+  return null;
+}
+
+// Set ffmpeg path if found
+const ffmpegPath = findFfmpegPath();
+if (ffmpegPath) {
+  ffmpeg.setFfmpegPath(ffmpegPath);
+}
 
 const ELEVENLABS_API_KEY = process.env.ELEVEN_LABS_API_KEY!;
 const ELEVENLABS_API_URL = 'https://api.elevenlabs.io/v1';
@@ -30,6 +67,7 @@ export interface TextToSpeechOptions {
   modelId?: string;
   voiceSettings?: VoiceSettings;
   outputFormat?: 'mp3_44100_128' | 'mp3_22050_32' | 'pcm_16000' | 'pcm_22050' | 'pcm_24000' | 'pcm_44100';
+  targetDuration?: number; // Target duration in seconds - audio will be stretched or truncated to match
 }
 
 export interface GeneratedAudio {
@@ -102,6 +140,100 @@ export async function generateSpeech(
 }
 
 /**
+ * Get the actual duration of an audio buffer using ffmpeg
+ */
+async function getAudioDuration(audioBuffer: Buffer): Promise<number> {
+  const tmpDir = os.tmpdir();
+  const tempPath = path.join(tmpDir, `audio_probe_${Date.now()}.mp3`);
+
+  await fs.promises.writeFile(tempPath, audioBuffer);
+
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(tempPath, async (err, metadata) => {
+      // Clean up temp file
+      await fs.promises.unlink(tempPath).catch(() => {});
+
+      if (err) {
+        reject(new Error(`Failed to probe audio: ${err.message}`));
+        return;
+      }
+
+      const duration = metadata.format.duration ?? 0;
+      resolve(duration);
+    });
+  });
+}
+
+/**
+ * Adjust audio duration using ffmpeg
+ * - If audio is shorter than target: stretch using atempo filter
+ * - If audio is longer than target: truncate
+ */
+async function adjustAudioDuration(
+  audioBuffer: Buffer,
+  currentDuration: number,
+  targetDuration: number
+): Promise<Buffer> {
+  const tmpDir = os.tmpdir();
+  const inputPath = path.join(tmpDir, `audio_input_${Date.now()}.mp3`);
+  const outputPath = path.join(tmpDir, `audio_output_${Date.now()}.mp3`);
+
+  await fs.promises.writeFile(inputPath, audioBuffer);
+
+  return new Promise((resolve, reject) => {
+    let command = ffmpeg(inputPath);
+
+    if (currentDuration < targetDuration) {
+      // Need to stretch (slow down) - atempo must be between 0.5 and 2.0
+      // For slower playback, atempo < 1.0
+      const tempoFactor = currentDuration / targetDuration;
+
+      // atempo filter has range [0.5, 2.0], chain multiple if needed
+      if (tempoFactor >= 0.5) {
+        command = command.audioFilters(`atempo=${tempoFactor}`);
+      } else {
+        // Chain multiple atempo filters for extreme stretching
+        const filters: string[] = [];
+        let remaining = tempoFactor;
+        while (remaining < 0.5) {
+          filters.push('atempo=0.5');
+          remaining = remaining / 0.5;
+        }
+        filters.push(`atempo=${remaining}`);
+        command = command.audioFilters(filters);
+      }
+    } else if (currentDuration > targetDuration) {
+      // Need to truncate - use duration option
+      command = command.duration(targetDuration);
+    }
+    // If equal, no adjustment needed but we still process for consistency
+
+    command
+      .audioCodec('libmp3lame')
+      .audioBitrate(192)
+      .format('mp3')
+      .on('end', async () => {
+        try {
+          const outputBuffer = await fs.promises.readFile(outputPath);
+          // Clean up temp files
+          await fs.promises.unlink(inputPath).catch(() => {});
+          await fs.promises.unlink(outputPath).catch(() => {});
+          resolve(outputBuffer);
+        } catch (err) {
+          reject(err);
+        }
+      })
+      .on('error', async (err) => {
+        // Clean up temp files on error
+        await fs.promises.unlink(inputPath).catch(() => {});
+        await fs.promises.unlink(outputPath).catch(() => {});
+        reject(new Error(`Failed to adjust audio duration: ${err.message}`));
+      })
+      .save(outputPath);
+  });
+}
+
+/**
  * Generate speech from text and save to Supabase storage and database
  * Returns the created Audio record
  */
@@ -110,10 +242,27 @@ export async function textToSpeechAndSave(
   text: string,
   options: TextToSpeechOptions & { fileName?: string } = {}
 ): Promise<GeneratedAudio> {
-  const { fileName: customFileName, ...ttsOptions } = options;
+  const { fileName: customFileName, targetDuration, ...ttsOptions } = options;
 
   // Generate speech audio
-  const audioBuffer = await generateSpeech(text, ttsOptions);
+  let audioBuffer = await generateSpeech(text, ttsOptions);
+  let finalDuration: number;
+
+  // If targetDuration is specified, adjust the audio to match
+  if (targetDuration !== undefined && targetDuration > 0) {
+    const actualDuration = await getAudioDuration(audioBuffer);
+    console.log(`[ElevenLabs] Original duration: ${actualDuration.toFixed(2)}s, target: ${targetDuration.toFixed(2)}s`);
+
+    if (Math.abs(actualDuration - targetDuration) > 0.1) {
+      // Only adjust if difference is more than 100ms
+      audioBuffer = await adjustAudioDuration(audioBuffer, actualDuration, targetDuration);
+      console.log(`[ElevenLabs] Audio adjusted to target duration: ${targetDuration.toFixed(2)}s`);
+    }
+    finalDuration = targetDuration;
+  } else {
+    // Get actual duration if no target specified
+    finalDuration = await getAudioDuration(audioBuffer);
+  }
 
   // Generate unique ID and file name
   const audioId = uuid();
@@ -142,19 +291,14 @@ export async function textToSpeechAndSave(
 
   console.log(`[ElevenLabs] Audio uploaded: ${publicUrl}`);
 
-  // Estimate duration based on text length (rough approximation)
-  // Average speaking rate is ~150 words per minute
-  const wordCount = text.split(/\s+/).length;
-  const estimatedDuration = (wordCount / 150) * 60; // in seconds
-
-  // Save to database
+  // Save to database with actual/adjusted duration
   const audio = await prisma.audio.create({
     data: {
       id: audioId,
       userId,
       url: publicUrl,
       fileName,
-      duration: estimatedDuration,
+      duration: finalDuration,
       fileSize: BigInt(audioBuffer.length),
     },
   });
