@@ -178,14 +178,26 @@ export function useChatAgent(
           },
         ]);
       } else {
+        const assistantContent = result.response || 'Unable to generate a response.';
         setMessages((current) => [
           ...current,
           {
             id: generateId(),
             role: 'assistant',
-            content: result.response || 'Unable to generate a response.',
+            content: assistantContent,
           },
         ]);
+
+        // Trigger background preference analysis (fire-and-forget)
+        const fullConversation = [
+          ...conversationMessages,
+          { role: 'assistant' as const, content: assistantContent },
+        ];
+        fetch('/api/preferences/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversation: fullConversation }),
+        }).catch((err) => console.error('Preference analysis failed:', err));
       }
     } catch (error) {
       setMessages((current) => [
@@ -259,14 +271,26 @@ export function useChatAgent(
         useHistoryStore.getState().addWithoutExecute(batchCommand);
       }
 
+      const assistantContent = result.response || 'Unable to generate a response.';
       setMessages((current) => [
         ...current,
         {
           id: generateId(),
           role: 'assistant',
-          content: result.response || 'Unable to generate a response.',
+          content: assistantContent,
         },
       ]);
+
+      // Trigger background preference analysis (fire-and-forget)
+      const fullConversation = [
+        ...conversationMessages,
+        { role: 'assistant' as const, content: assistantContent },
+      ];
+      fetch('/api/preferences/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversation: fullConversation }),
+      }).catch((err) => console.error('Preference analysis failed:', err));
     } catch (error) {
       setMessages((current) => [
         ...current,
