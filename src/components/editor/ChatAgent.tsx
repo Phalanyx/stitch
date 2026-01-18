@@ -17,46 +17,34 @@ interface ChatAgentProps {
   onWidthChange: (width: number) => void;
 }
 
-const LOADING_VERBS = [
-  'Thinking',
-  'Cooking',
-  'Embellishing',
-  'Caramelizing',
-  'Crafting',
-  'Polishing',
-  'Refining',
-  'Weaving',
-  'Orchestrating',
-  'Synthesizing',
+const LOADING_MESSAGES = [
+  "Ohana means family",
+  "Stitching things together",
+  "Getting creative",
+  "Making something beautiful",
+  "Experiment 626 processing",
+  "No one gets left behind",
+  "Working on it",
 ];
 
 function LoadingIndicator() {
-  const [currentVerb, setCurrentVerb] = useState(0);
-  const [dotCount, setDotCount] = useState(1);
-
-  useEffect(() => {
-    const verbInterval = setInterval(() => {
-      setCurrentVerb((prev) => (prev + 1) % LOADING_VERBS.length);
-    }, 2000);
-
-    const dotInterval = setInterval(() => {
-      setDotCount((prev) => (prev % 3) + 1);
-    }, 500);
-
-    return () => {
-      clearInterval(verbInterval);
-      clearInterval(dotInterval);
-    };
-  }, []);
+  const [message] = useState(() =>
+    LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]
+  );
 
   return (
-    <div className="bg-gray-800 text-gray-200 rounded-md px-2 py-1">
-      <span className="inline-flex items-center min-w-[140px]">
-        {LOADING_VERBS[currentVerb]}
-        <span className="inline-block w-6 text-left">
-          {'.'.repeat(dotCount)}
-        </span>
-      </span>
+    <div className="flex items-center gap-2 py-2">
+      <img
+        src="/stitch.gif"
+        alt="Loading..."
+        className="w-8 h-8 object-contain"
+      />
+      <span className="text-gray-400 text-sm">{message}</span>
+      <div className="flex gap-1">
+        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+      </div>
     </div>
   );
 }
@@ -131,7 +119,7 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
 
   return (
     <div
-      className={`fixed right-0 top-[53px] bottom-0 border-l border-gray-700 bg-gray-900 flex flex-col overflow-hidden z-40 ${
+      className={`fixed right-0 top-[53px] bottom-0 border-l border-gray-700 bg-black flex flex-col overflow-hidden z-40 ${
         !isResizing ? 'transition-[width] duration-300 ease-in-out' : ''
       }`}
       style={{ width: isOpen ? width : 0 }}
@@ -155,18 +143,37 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
         ref={scrollRef}
         className="flex-1 overflow-y-auto px-3 py-2 space-y-2 text-sm"
       >
-        {messages.map((message, index) => (
-          <div
-            key={`${message.role}-${index}`}
-            className={
-              message.role === 'user'
-                ? 'bg-sky-600/40 text-sky-100 rounded-md px-2 py-1 self-end'
-                : 'bg-gray-800 text-gray-200 rounded-md px-2 py-1'
-            }
-          >
-            {message.content}
-          </div>
-        ))}
+        {messages.map((message, index) =>
+          message.role === 'user' ? (
+            <div key={`${message.role}-${index}`} className="flex justify-end">
+              <div className="bg-sky-600/40 text-sky-100 rounded-2xl px-3 py-2 max-w-[80%] break-words">
+                {message.content}
+              </div>
+            </div>
+          ) : (
+            <div key={`${message.role}-${index}`} className="flex items-start gap-2">
+              <img
+                src="/stitch_icon.jpeg"
+                alt="Stitch"
+                className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+              />
+              <div className="relative max-w-[80%]">
+                <div
+                  className="absolute top-2 w-0 h-0"
+                  style={{
+                    left: '-6px',
+                    borderTop: '6px solid transparent',
+                    borderBottom: '6px solid transparent',
+                    borderRight: '10px solid rgb(31, 41, 55)',
+                  }}
+                />
+                <div className="bg-gray-800 text-gray-200 rounded-2xl px-3 py-2 break-words">
+                  {message.content}
+                </div>
+              </div>
+            </div>
+          )
+        )}
         {isSending && <LoadingIndicator />}
       </div>
       <div className="p-2 border-t border-gray-700 flex gap-2">
