@@ -32,6 +32,7 @@ export async function runChatOrchestrator(
   const conversation = input.conversation ?? [];
   const tools = createClientToolRegistry({
     onAudioCreated: input.onAudioCreated,
+    conversation,
   });
   const toolList = TOOL_DEFINITIONS.map(t => `- ${t.name}: ${t.description}`).join('\n');
 

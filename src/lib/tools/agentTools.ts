@@ -23,6 +23,7 @@ export const TOOL_DEFINITIONS = [
 
   // Agent tools
   { name: 'suggest_next_action', description: 'Suggest the next action for the user. Args: {phase: string}.' },
+  { name: 'analyze_preferences', description: 'Analyze conversation history to extract user preferences (likes/dislikes) and save to profile. No args needed.' },
 ] as const;
 
 export type ToolName = (typeof TOOL_DEFINITIONS)[number]['name'];
@@ -30,6 +31,7 @@ export type ToolName = (typeof TOOL_DEFINITIONS)[number]['name'];
 export type AgentToolContext = {
   clips: VideoReference[];
   audioClips: VideoReference[];
+  conversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
 };
 
 export type AgentToolOutput = {
@@ -91,8 +93,10 @@ export async function listUploadedVideos(): Promise<JsonValue> {
 
 export function createClientToolRegistry(options?: {
   onAudioCreated?: (audio: AudioMetadata) => void;
+  conversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }): AgentToolRegistry {
   const onAudioCreated = options?.onAudioCreated;
+  const conversation = options?.conversation;
 
   const isFailureResponse = (value: JsonValue): value is string =>
     typeof value === 'string' && value.toLowerCase().includes('failed');
@@ -360,6 +364,55 @@ export function createClientToolRegistry(options?: {
         changed: false,
         output: `Suggested next action for phase "${phase}": Review timeline or search for more clips.`,
       };
+    },
+
+    analyze_preferences: async () => {
+      if (!conversation || conversation.length === 0) {
+        return errorOutput('No conversation history available to analyze.');
+      }
+
+      try {
+        const response = await fetch('/api/preferences/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversation }),
+        });
+
+        const data = (await response.json()) as {
+          success?: boolean;
+          updated?: boolean;
+          newLikes?: string[];
+          newDislikes?: string[];
+          userLikes?: string;
+          userDislikes?: string;
+          error?: string;
+        };
+
+        if (!response.ok) {
+          return errorOutput(data.error || 'Failed to analyze preferences.');
+        }
+
+        if (data.updated) {
+          return {
+            status: 'ok',
+            changed: true,
+            output: {
+              message: 'Preferences updated successfully.',
+              newLikes: data.newLikes || [],
+              newDislikes: data.newDislikes || [],
+            },
+          };
+        }
+
+        return {
+          status: 'ok',
+          changed: false,
+          output: 'No new preferences found in the conversation.',
+        };
+      } catch (error) {
+        console.error('[AgentTools] analyze_preferences error:', error);
+        return errorOutput('Failed to analyze preferences.');
+      }
     },
   };
 }
