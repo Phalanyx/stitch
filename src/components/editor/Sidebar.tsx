@@ -384,12 +384,26 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
           }));
         }
       } else {
-        const error = await response.json();
-        console.error('Upload failed:', error);
+        let errorMessage = 'Upload failed';
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const error = await response.json();
+            errorMessage = error.error || errorMessage;
+          } else {
+            const text = await response.text();
+            errorMessage = `Upload failed: ${response.status} ${response.statusText}`;
+            console.error('Non-JSON error response:', text.substring(0, 200));
+          }
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+          errorMessage = `Upload failed: ${response.status} ${response.statusText}`;
+        }
+        console.error('Upload failed:', errorMessage);
         setUploadModal((prev) => ({
           ...prev,
           stage: 'error',
-          errorMessage: error.error || 'Upload failed',
+          errorMessage,
         }));
       }
     } catch (error) {
@@ -573,7 +587,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
           e.dataTransfer.setData('application/json', JSON.stringify(dragData));
           e.dataTransfer.effectAllowed = 'copy';
         }}
-        className="p-2 bg-gray-700 rounded-md hover:bg-gray-600 cursor-grab active:cursor-grabbing transition-colors group"
+        className="px-3 py-2 bg-transparent hover:bg-gray-700 cursor-grab active:cursor-grabbing border-b border-gray-800 transition-colors group"
         onClick={onClick}
         onMouseEnter={() => setHoveredId(item.id)}
         onMouseLeave={() => setHoveredId(null)}
@@ -594,11 +608,11 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
                     handleCancelEdit();
                   }
                 }}
-                className="flex-1 bg-gray-800 text-white text-sm px-2 py-0.5 rounded border border-gray-600 focus:border-blue-500 focus:outline-none min-w-0"
+                className="flex-1 bg-gray-800 text-white text-sm px-2 py-0.5 border border-gray-600 focus:border-blue-500 focus:outline-none min-w-0"
               />
               <button
                 onClick={() => handleSaveEdit(type, item.id)}
-                className="p-1 text-green-400 hover:text-green-300 hover:bg-gray-700 rounded"
+                className="p-1 text-violet-400 hover:text-violet-300 hover:bg-gray-700 rounded"
               >
                 <Check className="w-3.5 h-3.5" />
               </button>
@@ -611,21 +625,21 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
             </div>
           ) : (
             <>
-              <span className="text-white text-sm truncate flex-1 min-w-0">
+              <span className="text-gray-200 text-sm truncate flex-1 min-w-0">
                 {item.fileName}
               </span>
               {isHovered ? (
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <button
                     onClick={(e) => handleStartEdit(item.id, item.fileName, e)}
-                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-600 rounded transition-colors"
+                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
                     title="Rename"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={(e) => handlePropertiesClick(item, type, e)}
-                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-600 rounded transition-colors"
+                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
                     title="Properties"
                   >
                     <Info className="w-3.5 h-3.5" />
@@ -649,8 +663,8 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
   return (
     <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
       {/* Video Library */}
-      <div className="p-4 border-b border-gray-700">
-        <h2 className="text-white font-semibold mb-3">Video Library</h2>
+      <div className="p-3 border-b border-gray-700">
+        <h2 className="text-gray-300 text-xs font-semibold mb-2 uppercase tracking-wider">Video Library</h2>
         <input
           ref={videoFileInputRef}
           type="file"
@@ -661,14 +675,14 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
         <button
           onClick={() => videoFileInputRef.current?.click()}
           disabled={uploadModal.isOpen && uploadModal.stage !== 'indexing' && uploadModal.stage !== 'complete' && uploadModal.stage !== 'error'}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-md transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50"
+          className="w-full flex items-center justify-center gap-2 px-3 h-7 text-white text-sm transition-colors bg-slate-600 hover:bg-slate-700 disabled:bg-gray-700 disabled:opacity-50"
         >
           <Upload className="w-4 h-4" />
           Upload Video
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 border-b border-gray-700">
+      <div className="flex-1 overflow-y-auto border-b border-gray-700">
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
@@ -678,13 +692,13 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
             No videos uploaded yet
           </div>
         ) : (
-          <div className="space-y-2">
+          <div>
             {videos.map((video) =>
               renderMediaItem(
                 video,
                 'video',
                 Film,
-                'text-blue-400',
+                'text-slate-400',
                 () => handleAddToTimeline(video),
                 <>
                   {video.twelveLabsStatus === 'ready' && (
@@ -710,8 +724,8 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
       </div>
 
       {/* Audio Library */}
-      <div className="p-4 border-b border-gray-700">
-        <h2 className="text-white font-semibold mb-3">Audio Library</h2>
+      <div className="p-3 border-b border-gray-700">
+        <h2 className="text-gray-300 text-xs font-semibold mb-2 uppercase tracking-wider">Audio Library</h2>
         <input
           ref={audioFileInputRef}
           type="file"
@@ -722,7 +736,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
         <button
           onClick={() => audioFileInputRef.current?.click()}
           disabled={isUploadingAudio}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 text-white rounded-md transition-colors"
+          className="w-full flex items-center justify-center gap-2 px-3 h-7 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-700 disabled:opacity-50 text-white text-sm transition-colors"
         >
           {isUploadingAudio ? (
             <>
@@ -738,7 +752,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
@@ -748,9 +762,9 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
             No audio uploaded yet
           </div>
         ) : (
-          <div className="space-y-2">
+          <div>
             {audioFiles.map((audio) =>
-              renderMediaItem(audio, 'audio', Music, 'text-green-400', () => handleAddAudioToTimeline(audio))
+              renderMediaItem(audio, 'audio', Music, 'text-violet-400', () => handleAddAudioToTimeline(audio))
             )}
           </div>
         )}
@@ -811,7 +825,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
               </button>
               <button
                 onClick={handlePreUploadConfirm}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-md transition-colors"
               >
                 Upload
               </button>

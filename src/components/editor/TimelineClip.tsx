@@ -159,8 +159,8 @@ export function TimelineClip({
         isPositionInvalid
           ? 'bg-red-500 ring-2 ring-red-300'
           : isSelected
-          ? 'bg-blue-500 ring-2 ring-white'
-          : 'bg-blue-500'
+          ? 'bg-slate-600 ring-2 ring-white'
+          : 'bg-slate-600'
       } ${isDragging ? 'cursor-grabbing opacity-80' : ''} ${isResizing ? 'opacity-90' : ''}`}
       style={{ left: `${left}px`, width: `${width}px`, minWidth: '20px' }}
       onContextMenu={handleContextMenu}
@@ -171,7 +171,7 @@ export function TimelineClip({
     >
       {/* Left resize handle */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-blue-700 hover:bg-blue-600 rounded-l-md"
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-slate-700 hover:bg-slate-500 rounded-l-md"
         onMouseDown={handleLeftResize}
       />
 
@@ -196,7 +196,7 @@ export function TimelineClip({
 
       {/* Right resize handle */}
       <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-blue-700 hover:bg-blue-600 rounded-r-md"
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-slate-700 hover:bg-slate-500 rounded-r-md"
         onMouseDown={handleRightResize}
       />
 
