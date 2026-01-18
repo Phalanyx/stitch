@@ -1,48 +1,27 @@
 import { Command, CommandType } from '../types';
-import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 
 interface RenameLayerParams {
   layerId: string;
   newName: string;
 }
 
-export function createRenameLayerCommand(params: RenameLayerParams): Command {
-  const { layerId, newName } = params;
-
-  // Capture original name at command creation time
-  const store = useAudioTimelineStore.getState();
-  const layer = store.audioLayers.find((l) => l.id === layerId);
-
-  if (!layer) {
-    throw new Error(`Layer with id ${layerId} not found`);
-  }
-
-  const originalName = layer.name;
-
+/**
+ * @deprecated Single audio track mode - layers are no longer supported.
+ * This command is a no-op and exists only for backwards compatibility.
+ */
+export function createRenameLayerCommand(_params: RenameLayerParams): Command {
   return {
     id: crypto.randomUUID(),
-    description: `Rename audio layer`,
+    description: `Rename audio layer (no-op)`,
     timestamp: Date.now(),
     type: 'layer:rename' as CommandType,
 
     execute() {
-      const currentStore = useAudioTimelineStore.getState();
-      useAudioTimelineStore.setState({
-        audioLayers: currentStore.audioLayers.map((l) =>
-          l.id === layerId ? { ...l, name: newName } : l
-        ),
-        isDirty: true,
-      });
+      // No-op: Single audio track mode - track is always named "Audio"
     },
 
     undo() {
-      const currentStore = useAudioTimelineStore.getState();
-      useAudioTimelineStore.setState({
-        audioLayers: currentStore.audioLayers.map((l) =>
-          l.id === layerId ? { ...l, name: originalName } : l
-        ),
-        isDirty: true,
-      });
+      // No-op: Nothing to undo
     },
   };
 }

@@ -8,6 +8,10 @@ import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 const SNAP_INCREMENT = 0.05;
 const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) * SNAP_INCREMENT;
 
+export const AUDIO_CLIP_HEIGHT = 40; // Height of each stacked clip row
+export const AUDIO_CLIP_PADDING = 4; // Top padding for the first clip
+export const AUDIO_CLIP_GAP = 2; // Gap between stacked clips
+
 interface AudioTimelineClipProps {
   clip: AudioReference;
   layerId: string;
@@ -17,6 +21,7 @@ interface AudioTimelineClipProps {
   onRemove: (id: string, layerId: string) => void;
   isSelected?: boolean;
   onSelect?: (id: string, shiftKey: boolean, layerId: string) => void;
+  depth?: number; // Vertical stacking depth (0 = bottom row)
 }
 
 export function AudioTimelineClip({
@@ -28,6 +33,7 @@ export function AudioTimelineClip({
   onRemove,
   isSelected,
   onSelect,
+  depth = 0,
 }: AudioTimelineClipProps) {
   const clipRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -153,18 +159,20 @@ export function AudioTimelineClip({
 
   const left = clip.timestamp * pixelsPerSecond;
   const width = visibleDuration * pixelsPerSecond;
+  // Calculate top position based on depth (stacked from bottom)
+  const top = AUDIO_CLIP_PADDING + depth * (AUDIO_CLIP_HEIGHT + AUDIO_CLIP_GAP);
 
   return (
     <div
       ref={clipRef}
-      className={`absolute top-2 h-12 rounded-md flex items-center ${
+      className={`absolute rounded-md flex items-center ${
         isPositionInvalid
           ? 'bg-red-500 ring-2 ring-red-300'
           : isSelected
           ? 'bg-green-600 ring-2 ring-white'
           : 'bg-green-600'
       } ${isDragging ? 'cursor-grabbing opacity-80' : ''} ${isResizing ? 'opacity-90' : ''}`}
-      style={{ left: `${left}px`, width: `${width}px`, minWidth: '20px' }}
+      style={{ left: `${left}px`, width: `${width}px`, minWidth: '20px', top: `${top}px`, height: `${AUDIO_CLIP_HEIGHT}px` }}
       onContextMenu={handleContextMenu}
       onClick={(e) => {
         e.stopPropagation();

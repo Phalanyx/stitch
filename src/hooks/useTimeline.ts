@@ -13,14 +13,11 @@ import {
   createRemoveAudioCommand,
   createMoveAudioCommand,
   createTrimAudioCommand,
-  createAddLayerCommand,
-  createRemoveLayerCommand,
   createToggleMuteCommand,
-  createRenameLayerCommand,
   createBatchDeleteCommand,
   createBatchPasteCommand,
 } from '@/lib/commands';
-import { useSelectionStore, SelectedClip } from '@/stores/selectionStore';
+import { useSelectionStore } from '@/stores/selectionStore';
 import { useClipboardStore, ClipboardClip } from '@/stores/clipboardStore';
 
 export function useTimeline() {
@@ -169,27 +166,14 @@ export function useTimeline() {
     [execute]
   );
 
-  // Layer operations wrapped with commands
+  // Layer operations - deprecated in single track mode (no-ops)
   const addLayer = useCallback(() => {
-    const store = useAudioTimelineStore.getState();
-    const newLayerNumber = store.audioLayers.length + 1;
-    const layerId = crypto.randomUUID();
-    const command = createAddLayerCommand({ layerId, name: `Audio ${newLayerNumber}` });
-    execute(command);
-  }, [execute]);
+    // No-op: Single audio track mode - cannot add layers
+  }, []);
 
-  const removeLayer = useCallback(
-    (layerId: string) => {
-      try {
-        const command = createRemoveLayerCommand({ layerId });
-        execute(command);
-      } catch (error) {
-        // Cannot remove last layer
-        console.warn('Cannot remove layer:', error);
-      }
-    },
-    [execute]
-  );
+  const removeLayer = useCallback((_layerId: string) => {
+    // No-op: Single audio track mode - cannot remove the only layer
+  }, []);
 
   const toggleLayerMute = useCallback(
     (layerId: string) => {
@@ -200,11 +184,10 @@ export function useTimeline() {
   );
 
   const renameLayer = useCallback(
-    (layerId: string, name: string) => {
-      const command = createRenameLayerCommand({ layerId, newName: name });
-      execute(command);
+    (_layerId: string, _name: string) => {
+      // No-op: Single audio track mode - track is always named "Audio"
     },
-    [execute]
+    []
   );
 
   // Batch delete selected clips

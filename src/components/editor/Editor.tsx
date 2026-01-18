@@ -62,19 +62,13 @@ export function Editor() {
     removeClip,
     // Audio handlers
     audioLayers,
-    activeLayerId,
     addAudioToTimeline,
     addAudioAtTimestamp,
     updateAudioTimestamp,
     updateAudioClipTrim,
     removeAudioClip,
-    // Layer management
-    addLayer,
-    removeLayer,
-    setActiveLayer,
+    // Layer management (single track mode - only mute toggle needed)
     toggleLayerMute,
-    renameLayer,
-    cleanupEmptyLayers,
     // Batch operations
     batchDeleteSelected,
     copySelectedToClipboard,
@@ -236,20 +230,6 @@ export function Editor() {
   const handleCloseExportModal = useCallback(() => {
     reset();
   }, [reset]);
-  const handleAddLayerWithAudio = useCallback(async (audio: { id: string; url: string; duration?: number }, timestamp: number) => {
-    // First add a new layer
-    addLayer();
-    // The new layer becomes active, so we can use addAudioAtTimestamp without specifying layerId
-    let duration = audio.duration;
-    if (!duration) {
-      try {
-        duration = await getAudioDuration(audio.url);
-      } catch (error) {
-        console.error('Failed to extract audio duration:', error);
-      }
-    }
-    addAudioAtTimestamp({ ...audio, duration }, timestamp);
-  }, [addLayer, addAudioAtTimestamp]);
 
   // Derive audioClips from audioLayers for ChatAgent/agents
   const audioClips = audioLayers.flatMap((layer) => layer.clips);
@@ -354,7 +334,6 @@ export function Editor() {
       <Timeline
         clips={clips}
         audioLayers={audioLayers}
-        activeLayerId={activeLayerId}
         onUpdateTimestamp={updateVideoTimestamp}
         onUpdateTrim={updateClipTrim}
         onRemove={removeClip}
@@ -363,13 +342,7 @@ export function Editor() {
         onRemoveAudio={removeAudioClip}
         onDropVideo={handleDropVideo}
         onDropAudio={handleDropAudio}
-        onSetActiveLayer={setActiveLayer}
-        onAddLayer={addLayer}
-        onRemoveLayer={removeLayer}
         onToggleLayerMute={toggleLayerMute}
-        onRenameLayer={renameLayer}
-        onCleanupEmptyLayers={cleanupEmptyLayers}
-        onAddLayerWithAudio={handleAddLayerWithAudio}
         currentTime={currentTime}
         onSeek={handleSeek}
       />
