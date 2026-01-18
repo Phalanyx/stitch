@@ -84,7 +84,7 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
             key={`${message.role}-${index}`}
             className={
               message.role === 'user'
-                ? 'bg-slate-600/40 text-slate-100 rounded-md px-2 py-1 self-end'
+                ? 'bg-sky-600/40 text-sky-100 rounded-md px-2 py-1 self-end'
                 : 'bg-gray-800 text-gray-200 rounded-md px-2 py-1'
             }
           >
@@ -101,12 +101,12 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
             if (event.key === 'Enter') sendMessage();
           }}
           placeholder="Ask about your timeline..."
-          className="flex-1 bg-gray-800 text-gray-100 text-sm px-2 py-1 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-slate-500"
+          className="flex-1 bg-gray-800 text-gray-100 text-sm px-2 py-1 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
         />
         <button
           onClick={sendMessage}
           disabled={isSending}
-          className="p-2 rounded-md bg-slate-600 hover:bg-slate-500 text-white disabled:opacity-50"
+          className="p-2 rounded-md bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-50"
           aria-label="Send message"
         >
           <Send className="w-4 h-4" />

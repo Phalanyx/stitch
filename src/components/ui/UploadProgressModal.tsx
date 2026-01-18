@@ -47,9 +47,9 @@ function StageItem({
       <div
         className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
           isComplete
-            ? 'bg-violet-500/20 text-violet-400'
+            ? 'bg-blue-500/20 text-blue-400'
             : isCurrent
-            ? 'bg-slate-500/20 text-slate-400'
+            ? 'bg-sky-500/20 text-sky-400'
             : 'bg-gray-700 text-gray-500'
         }`}
       >
@@ -63,7 +63,7 @@ function StageItem({
       </div>
       <span
         className={`text-sm ${
-          isComplete ? 'text-violet-400' : isCurrent ? 'text-white' : 'text-gray-500'
+          isComplete ? 'text-blue-400' : isCurrent ? 'text-white' : 'text-gray-500'
         }`}
       >
         {label}
@@ -132,10 +132,10 @@ export function UploadProgressModal({
             ))}
             {isComplete && (
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-violet-500/20 text-violet-400 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center flex-shrink-0">
                   <Check className="w-4 h-4" />
                 </div>
-                <span className="text-sm text-violet-400">Complete</span>
+                <span className="text-sm text-blue-400">Complete</span>
               </div>
             )}
           </div>
@@ -154,7 +154,7 @@ export function UploadProgressModal({
               onClick={onClose}
               className={`px-4 py-2 text-sm rounded-md transition-colors ${
                 isComplete
-                  ? 'bg-violet-600 hover:bg-violet-700 text-white'
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
                   : 'bg-gray-700 hover:bg-gray-600 text-white'
               }`}
             >

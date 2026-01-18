@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, Film, Music, Loader2, Sparkles, AlertCircle, Pencil, Check, X, Info } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef, useMemo } from 'react';
+import { Film, Music, Loader2, Sparkles, AlertCircle, Pencil, Check, X, Info } from 'lucide-react';
 import { VideoMetadata } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { createClient } from '@/lib/supabase/client';
@@ -11,11 +11,106 @@ import { UploadProgressModal, UploadStage } from '@/components/ui/UploadProgress
 import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 
+// Helper to format duration as MM:SS
+function formatDuration(seconds: number | null): string {
+  if (seconds === null || !isFinite(seconds)) return '';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Video thumbnail component that extracts frame from video
+function VideoThumbnail({ url, className }: { url: string; className?: string }) {
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.preload = 'metadata';
+    video.muted = true;
+
+    const handleLoadedData = () => {
+      // Seek to 0.1 seconds to get a frame (not exactly 0 to avoid black frames)
+      video.currentTime = 0.1;
+    };
+
+    const handleSeeked = () => {
+      if (!isMounted) return;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          setThumbnailUrl(dataUrl);
+        }
+      } catch (err) {
+        console.error('Failed to generate thumbnail:', err);
+        setError(true);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const handleError = () => {
+      if (!isMounted) return;
+      setError(true);
+      setIsLoading(false);
+    };
+
+    video.addEventListener('loadeddata', handleLoadedData);
+    video.addEventListener('seeked', handleSeeked);
+    video.addEventListener('error', handleError);
+    video.src = url;
+
+    return () => {
+      isMounted = false;
+      video.removeEventListener('loadeddata', handleLoadedData);
+      video.removeEventListener('seeked', handleSeeked);
+      video.removeEventListener('error', handleError);
+      video.src = '';
+    };
+  }, [url]);
+
+  if (isLoading) {
+    return (
+      <div className={`bg-gray-700 flex items-center justify-center ${className}`}>
+        <Loader2 className="w-6 h-6 text-gray-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !thumbnailUrl) {
+    return (
+      <div className={`bg-gray-700 flex items-center justify-center ${className}`}>
+        <Film className="w-8 h-8 text-gray-500" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={thumbnailUrl}
+      alt="Video thumbnail"
+      className={`object-cover ${className}`}
+    />
+  );
+}
+
 interface SidebarProps {
   onAddToTimeline: (video: { id: string; url: string; duration?: number; audio?: { id: string; url: string; duration: number | null } }) => void;
   onAddAudioToTimeline: (audio: { id: string; url: string; duration?: number }) => void;
   newAudio?: AudioMetadata | null;
   onNewAudioHandled?: () => void;
+}
+
+export interface SidebarRef {
+  processFile: (file: File) => void;
 }
 
 type MediaItem = (VideoMetadata | AudioMetadata) & { type: 'video' | 'audio' };
@@ -34,7 +129,9 @@ interface PreUploadModalState {
   customName: string;
 }
 
-export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNewAudioHandled }: SidebarProps) {
+export const Sidebar = forwardRef<SidebarRef, SidebarProps>(
+  ({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNewAudioHandled }, ref) => {
+  const [activeTab, setActiveTab] = useState<'video' | 'audio'>('video');
   const [videos, setVideos] = useState<VideoMetadata[]>([]);
   const [audioFiles, setAudioFiles] = useState<AudioMetadata[]>([]);
   const [uploadModal, setUploadModal] = useState<UploadModalState>({
@@ -460,6 +557,41 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
     }
   };
 
+  // Process file from external import (top bar)
+  const processFile = useCallback((file: File) => {
+    const isVideo = file.type.startsWith('video/');
+    const isAudio = file.type.startsWith('audio/');
+
+    if (isVideo) {
+      // Switch to video tab and process video
+      setActiveTab('video');
+      // Set the file in the input and trigger the upload handler
+      if (videoFileInputRef.current) {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        videoFileInputRef.current.files = dataTransfer.files;
+        const event = new Event('change', { bubbles: true });
+        videoFileInputRef.current.dispatchEvent(event);
+      }
+    } else if (isAudio) {
+      // Switch to audio tab and process audio
+      setActiveTab('audio');
+      // Set the file in the input and trigger the upload handler
+      if (audioFileInputRef.current) {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        audioFileInputRef.current.files = dataTransfer.files;
+        const event = new Event('change', { bubbles: true });
+        audioFileInputRef.current.dispatchEvent(event);
+      }
+    }
+  }, []);
+
+  // Expose processFile method via ref
+  useImperativeHandle(ref, () => ({
+    processFile,
+  }), [processFile]);
+
   const isVideoUsedInTimeline = (videoId: string) => {
     return clips.some((clip) => clip.videoId === videoId);
   };
@@ -608,11 +740,11 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
                     handleCancelEdit();
                   }
                 }}
-                className="flex-1 bg-gray-800 text-white text-sm px-2 py-0.5 border border-gray-600 focus:border-blue-500 focus:outline-none min-w-0"
+                className="flex-1 bg-gray-800 text-white text-sm px-2 py-0.5 border border-gray-600 focus:border-blue-500 focus:outline-none min-w-0 rounded"
               />
               <button
                 onClick={() => handleSaveEdit(type, item.id)}
-                className="p-1 text-violet-400 hover:text-violet-300 hover:bg-gray-700 rounded"
+                className="p-1 text-blue-400 hover:text-blue-300 hover:bg-gray-700 rounded"
               >
                 <Check className="w-3.5 h-3.5" />
               </button>
@@ -632,14 +764,14 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <button
                     onClick={(e) => handleStartEdit(item.id, item.fileName, e)}
-                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
                     title="Rename"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={(e) => handlePropertiesClick(item, type, e)}
-                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
                     title="Properties"
                   >
                     <Info className="w-3.5 h-3.5" />
@@ -660,11 +792,40 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
     );
   };
 
+
   return (
-    <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
-      {/* Video Library */}
+    <div className="w-72 bg-gray-800 border-r border-gray-700 flex flex-col">
+      {/* Asset Library Header */}
       <div className="p-3 border-b border-gray-700">
-        <h2 className="text-gray-300 text-xs font-semibold mb-2 uppercase tracking-wider">Video Library</h2>
+        <h2 className="text-gray-300 text-xs font-semibold mb-3 uppercase tracking-wider">Asset Library</h2>
+        
+        {/* Tabs */}
+        <div className="flex gap-1">
+          <button
+            onClick={() => setActiveTab('video')}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+              activeTab === 'video'
+                ? 'bg-sky-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <Film className="w-3.5 h-3.5" />
+            Video
+          </button>
+          <button
+            onClick={() => setActiveTab('audio')}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+              activeTab === 'audio'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <Music className="w-3.5 h-3.5" />
+            Audio
+          </button>
+        </div>
+
+        {/* Hidden file inputs for processFile method */}
         <input
           ref={videoFileInputRef}
           type="file"
@@ -672,60 +833,6 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
           onChange={handleVideoUpload}
           className="hidden"
         />
-        <button
-          onClick={() => videoFileInputRef.current?.click()}
-          disabled={uploadModal.isOpen && uploadModal.stage !== 'indexing' && uploadModal.stage !== 'complete' && uploadModal.stage !== 'error'}
-          className="w-full flex items-center justify-center gap-2 px-3 h-7 text-white text-sm transition-colors bg-slate-600 hover:bg-slate-700 disabled:bg-gray-700 disabled:opacity-50"
-        >
-          <Upload className="w-4 h-4" />
-          Upload Video
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto border-b border-gray-700">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
-          </div>
-        ) : videos.length === 0 ? (
-          <div className="text-gray-500 text-sm text-center py-4">
-            No videos uploaded yet
-          </div>
-        ) : (
-          <div>
-            {videos.map((video) =>
-              renderMediaItem(
-                video,
-                'video',
-                Film,
-                'text-slate-400',
-                () => handleAddToTimeline(video),
-                <>
-                  {video.twelveLabsStatus === 'ready' && (
-                    <span title="AI processed">
-                      <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
-                    </span>
-                  )}
-                  {video.twelveLabsStatus === 'indexing' && (
-                    <span title="Processing">
-                      <Loader2 className="w-3 h-3 text-yellow-400 animate-spin shrink-0" />
-                    </span>
-                  )}
-                  {video.twelveLabsStatus === 'failed' && (
-                    <span title="AI processing failed">
-                      <AlertCircle className="w-3 h-3 text-red-400 shrink-0" />
-                    </span>
-                  )}
-                </>
-              )
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Audio Library */}
-      <div className="p-3 border-b border-gray-700">
-        <h2 className="text-gray-300 text-xs font-semibold mb-2 uppercase tracking-wider">Audio Library</h2>
         <input
           ref={audioFileInputRef}
           type="file"
@@ -733,40 +840,176 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
           onChange={handleAudioUpload}
           className="hidden"
         />
-        <button
-          onClick={() => audioFileInputRef.current?.click()}
-          disabled={isUploadingAudio}
-          className="w-full flex items-center justify-center gap-2 px-3 h-7 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-700 disabled:opacity-50 text-white text-sm transition-colors"
-        >
-          {isUploadingAudio ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading...
-            </>
-          ) : (
-            <>
-              <Upload className="w-4 h-4" />
-              Upload Audio
-            </>
-          )}
-        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
-          </div>
-        ) : audioFiles.length === 0 ? (
-          <div className="text-gray-500 text-sm text-center py-4">
-            No audio uploaded yet
-          </div>
+      {/* Content Area */}
+      <div className="flex-1 overflow-y-auto p-3">
+        {activeTab === 'video' ? (
+          isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+            </div>
+          ) : videos.length === 0 ? (
+            <div className="text-gray-500 text-sm text-center py-4">
+              No videos uploaded yet
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {videos.map((video) => {
+                const isHovered = hoveredId === video.id;
+                const isEditing = editingId === video.id;
+
+                return (
+                  <div
+                    key={video.id}
+                    draggable={!isEditing}
+                    onDragStart={(e) => {
+                      if (isEditing) {
+                        e.preventDefault();
+                        return;
+                      }
+                      const dragData: Record<string, unknown> = {
+                        type: 'video',
+                        id: video.id,
+                        url: video.url,
+                        duration: video.duration,
+                      };
+                      if (video.audio) {
+                        dragData.audio = {
+                          id: video.audio.id,
+                          url: video.audio.url,
+                          duration: video.audio.duration,
+                        };
+                      }
+                      e.dataTransfer.setData('application/json', JSON.stringify(dragData));
+                      e.dataTransfer.effectAllowed = 'copy';
+                    }}
+                    className="bg-gray-700 rounded-lg overflow-hidden cursor-grab active:cursor-grabbing hover:ring-2 hover:ring-sky-500 transition-all group"
+                    onClick={() => !isEditing && handleAddToTimeline(video)}
+                    onMouseEnter={() => setHoveredId(video.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                  >
+                    {/* Thumbnail */}
+                    <div className="relative aspect-video">
+                      <VideoThumbnail url={video.url} className="w-full h-full" />
+                      {/* Duration badge */}
+                      {video.duration && (
+                        <div className="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">
+                          {formatDuration(video.duration)}
+                        </div>
+                      )}
+                      {/* Status indicator */}
+                      <div className="absolute top-1 right-1">
+                        {video.twelveLabsStatus === 'ready' && (
+                          <span title="AI processed" className="bg-black/50 rounded p-0.5 block">
+                            <Sparkles className="w-3 h-3 text-blue-400" />
+                          </span>
+                        )}
+                        {video.twelveLabsStatus === 'indexing' && (
+                          <span title="Processing" className="bg-black/50 rounded p-0.5 block">
+                            <Loader2 className="w-3 h-3 text-yellow-400 animate-spin" />
+                          </span>
+                        )}
+                        {video.twelveLabsStatus === 'failed' && (
+                          <span title="AI processing failed" className="bg-black/50 rounded p-0.5 block">
+                            <AlertCircle className="w-3 h-3 text-red-400" />
+                          </span>
+                        )}
+                      </div>
+                      {/* Hover actions */}
+                      {isHovered && !isEditing && (
+                        <div className="absolute top-1 left-1 flex gap-0.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartEdit(video.id, video.fileName, e);
+                            }}
+                            className="p-1 bg-black/50 text-gray-300 hover:text-white rounded transition-colors"
+                            title="Rename"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePropertiesClick(video, 'video', e);
+                            }}
+                            className="p-1 bg-black/50 text-gray-300 hover:text-white rounded transition-colors"
+                            title="Properties"
+                          >
+                            <Info className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick(video, 'video', e);
+                            }}
+                            className="p-1 bg-black/50 text-gray-300 hover:text-red-400 rounded transition-colors"
+                            title="Delete"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {/* File name */}
+                    <div className="p-2">
+                      {isEditing ? (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            ref={editInputRef}
+                            type="text"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSaveEdit('video', video.id);
+                              } else if (e.key === 'Escape') {
+                                handleCancelEdit();
+                              }
+                            }}
+                            className="flex-1 bg-gray-800 text-white text-xs px-2 py-1 border border-gray-600 focus:border-blue-500 focus:outline-none min-w-0 rounded"
+                          />
+                          <button
+                            onClick={() => handleSaveEdit('video', video.id)}
+                            className="p-1 text-blue-400 hover:text-blue-300 rounded"
+                          >
+                            <Check className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="p-1 text-gray-400 hover:text-white rounded"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-gray-200 text-xs truncate" title={video.fileName}>
+                          {video.fileName}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         ) : (
-          <div>
-            {audioFiles.map((audio) =>
-              renderMediaItem(audio, 'audio', Music, 'text-violet-400', () => handleAddAudioToTimeline(audio))
-            )}
-          </div>
+          isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+            </div>
+          ) : audioFiles.length === 0 ? (
+            <div className="text-gray-500 text-sm text-center py-4">
+              No audio uploaded yet
+            </div>
+          ) : (
+            <div className="-mx-3 -mt-3">
+              {audioFiles.map((audio) =>
+                renderMediaItem(audio, 'audio', Music, 'text-blue-400', () => handleAddAudioToTimeline(audio))
+              )}
+            </div>
+          )
         )}
       </div>
 
@@ -825,7 +1068,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
               </button>
               <button
                 onClick={handlePreUploadConfirm}
-                className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-md transition-colors"
+                className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-md transition-colors"
               >
                 Upload
               </button>
@@ -844,4 +1087,4 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
       />
     </div>
   );
-}
+});
