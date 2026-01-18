@@ -4,36 +4,43 @@ import { prisma } from '@/lib/prisma';
 
 // GET: Fetch user preferences (likes and dislikes)
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-  let profile = await prisma.profile.findUnique({
-    where: { id: user.id },
-    select: { userLikes: true, userDislikes: true },
-  });
-
-  // Create profile if it doesn't exist
-  if (!profile) {
-    profile = await prisma.profile.create({
-      data: {
-        id: user.id,
-        sessionVideo: [],
-        sessionAudio: [],
-        userLikes: '',
-        userDislikes: '',
-      },
-      select: { userLikes: true, userDislikes: true },
+    let profile = await prisma.profile.findUnique({
+      where: { id: user.id },
+      select: { userLikes: true, userDislikes: true, showToolOptionsPreview: true },
     });
-  }
 
-  return NextResponse.json({
-    userLikes: profile.userLikes,
-    userDislikes: profile.userDislikes,
-  });
+    // Create profile if it doesn't exist
+    if (!profile) {
+      profile = await prisma.profile.create({
+        data: {
+          id: user.id,
+          sessionVideo: [],
+          sessionAudio: [],
+          userLikes: '',
+          userDislikes: '',
+          showToolOptionsPreview: false,
+        },
+        select: { userLikes: true, userDislikes: true, showToolOptionsPreview: true },
+      });
+    }
+
+    return NextResponse.json({
+      userLikes: profile.userLikes,
+      userDislikes: profile.userDislikes,
+      showToolOptionsPreview: profile.showToolOptionsPreview,
+    });
+  } catch (error) {
+    console.error('[Preferences GET] Error:', error);
+    return NextResponse.json({ error: 'Failed to fetch preferences' }, { status: 500 });
+  }
 }
 
 // POST: Update user preferences
@@ -46,14 +53,17 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { userLikes, userDislikes } = body;
+  const { userLikes, userDislikes, showToolOptionsPreview } = body;
 
-  const updateData: { userLikes?: string; userDislikes?: string } = {};
+  const updateData: { userLikes?: string; userDislikes?: string; showToolOptionsPreview?: boolean } = {};
   if (userLikes !== undefined) {
     updateData.userLikes = String(userLikes);
   }
   if (userDislikes !== undefined) {
     updateData.userDislikes = String(userDislikes);
+  }
+  if (showToolOptionsPreview !== undefined) {
+    updateData.showToolOptionsPreview = Boolean(showToolOptionsPreview);
   }
 
   await prisma.profile.upsert({
@@ -65,6 +75,7 @@ export async function POST(request: NextRequest) {
       sessionAudio: [],
       userLikes: userLikes ?? '',
       userDislikes: userDislikes ?? '',
+      showToolOptionsPreview: showToolOptionsPreview ?? false,
     },
   });
 

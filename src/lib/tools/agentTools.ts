@@ -28,6 +28,21 @@ export const TOOL_DEFINITIONS = [
 
 export type ToolName = (typeof TOOL_DEFINITIONS)[number]['name'];
 
+// Metadata for tools that have natural language parameters that benefit from variations
+export const NL_TOOL_PARAMS: Record<string, { paramName: string; description: string }> = {
+  search_videos: { paramName: 'query', description: 'Search query for finding video clips' },
+  create_transition: { paramName: 'prompt', description: 'Style description for the transition' },
+  create_audio_from_text: { paramName: 'text', description: 'Text to convert to speech' },
+};
+
+export function hasNLParameter(toolName: string): boolean {
+  return toolName in NL_TOOL_PARAMS;
+}
+
+export function getNLParamInfo(toolName: string): { paramName: string; description: string } | null {
+  return NL_TOOL_PARAMS[toolName] ?? null;
+}
+
 export type AgentToolContext = {
   clips: VideoReference[];
   audioClips: VideoReference[];

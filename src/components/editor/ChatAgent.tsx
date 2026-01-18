@@ -5,6 +5,7 @@ import { Send, X } from 'lucide-react';
 import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { useChatAgent } from '@/hooks/useChatAgent';
+import { ToolOptionsSelector } from '@/components/chat/ToolOptionsSelector';
 
 interface ChatAgentProps {
   clips: VideoReference[];
@@ -37,7 +38,7 @@ function LoadingIndicator() {
       <img
         src="/stitch.gif"
         alt="Loading..."
-        className="w-8 h-8 object-contain"
+        className="w-12 h-12 object-contain"
       />
       <span className="text-gray-400 text-sm">{message}</span>
       <div className="flex gap-1">
@@ -53,7 +54,16 @@ const MIN_WIDTH = 280;
 const MAX_WIDTH = 600;
 
 export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged, isOpen, width, onToggle, onWidthChange }: ChatAgentProps) {
-  const { messages, input, setInput, isSending, sendMessage } = useChatAgent(
+  const {
+    messages,
+    input,
+    setInput,
+    isSending,
+    sendMessage,
+    selectToolOption,
+    cancelToolOptions,
+    hasPendingSelection,
+  } = useChatAgent(
     clips,
     audioClips,
     onAudioCreated,
@@ -150,6 +160,22 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
                 {message.content}
               </div>
             </div>
+          ) : message.role === 'tool_options' && message.toolOptions ? (
+            <div key={`${message.role}-${index}`} className="flex items-start gap-2">
+              <img
+                src="/stitch_icon.jpeg"
+                alt="Stitch"
+                className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+              />
+              <div className="max-w-[90%]">
+                <ToolOptionsSelector
+                  toolOptions={message.toolOptions}
+                  onSelect={selectToolOption}
+                  onCancel={cancelToolOptions}
+                  disabled={isSending}
+                />
+              </div>
+            </div>
           ) : (
             <div key={`${message.role}-${index}`} className="flex items-start gap-2">
               <img
@@ -181,14 +207,15 @@ export function ChatAgent({ clips, audioClips, onAudioCreated, onTimelineChanged
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') sendMessage();
+            if (event.key === 'Enter' && !hasPendingSelection) sendMessage();
           }}
-          placeholder="Ask about your timeline..."
-          className="flex-1 bg-gray-800 text-gray-100 text-sm px-2 py-1 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+          placeholder={hasPendingSelection ? "Select an option above..." : "Ask about your timeline..."}
+          disabled={hasPendingSelection}
+          className="flex-1 bg-gray-800 text-gray-100 text-sm px-2 py-1 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           onClick={sendMessage}
-          disabled={isSending}
+          disabled={isSending || hasPendingSelection}
           className="p-2 rounded-md bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-50"
           aria-label="Send message"
         >
