@@ -1,4 +1,5 @@
-import { callGeminiText, parseJsonFromText } from '@/lib/ai/gemini';
+import { parseJsonFromText } from '@/lib/ai/gemini';
+import { callLLMText } from '@/lib/ai/llmService';
 import { BehaviorState, EventRecord, MemoryState } from './types';
 
 const EDITING_EVENTS = new Set(['clip_added', 'clip_removed', 'clip_moved', 'clip_trimmed']);
@@ -32,14 +33,15 @@ export async function interpretBehavior(
     ? `Last action: ${lastEventType}.`
     : memory.behaviorState.summary;
 
-  const aiText = await callGeminiText(
+  const aiText = await callLLMText(
     [
       'You interpret user behavior in a video editor.',
       'Return JSON only: {"phase":"editing|previewing|exporting|idle|unknown","summary":"..."}',
       `Previous summary: ${memory.behaviorState.summary}`,
       `Event counts: ${JSON.stringify(eventCounts)}`,
       `New events: ${JSON.stringify(newEvents)}`,
-    ].join('\n')
+    ].join('\n'),
+    { agent: 'behavior' }
   );
 
   const aiResult = parseJsonFromText<{ phase?: BehaviorState['phase']; summary?: string }>(aiText);

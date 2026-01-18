@@ -74,7 +74,8 @@ export async function runChatOrchestrator(
       '- create_transition: Generates a transition between two adjacent clips using precedingClipId and succeedingClipId.',
       '- Return [] for simple questions that need no action',
       '- Maximum 3 actions per request',
-    ].join('\n')
+    ].join('\n'),
+    { agent: 'chat' }
   );
 
   console.log('[ChatOrchestrator] Initial plan:', JSON.stringify(planText, null, 2));
@@ -144,7 +145,8 @@ export async function runChatOrchestrator(
             '- Only list/summarize actions were performed for a modification request',
             '',
             'If satisfied, write a brief response describing what was done.',
-          ].join('\n')
+          ].join('\n'),
+          { agent: 'chat' }
         );
 
         const satisfaction = parseJsonFromText<SatisfactionCheck>(satisfactionText);
@@ -195,7 +197,8 @@ export async function runChatOrchestrator(
             '- If list_clips returned clips and user wants to delete the last one, call remove_video with that clipId',
             '- If list_uploaded_videos returned videos and user wants to add one, call add_video with that videoId',
             '- Return [] if the request is already fulfilled or cannot be completed',
-          ].join('\n')
+          ].join('\n'),
+          { agent: 'chat' }
         );
 
         const rePlan = parseJsonFromText<Array<{ tool?: string; args?: Record<string, JsonValue> }>>(
@@ -251,7 +254,7 @@ export async function runChatOrchestrator(
     promptParts.push('', 'Provide a helpful response.');
 
     try {
-      finalResponse = await callChatLlm(promptParts.join('\n'));
+      finalResponse = await callChatLlm(promptParts.join('\n'), { agent: 'chat' });
     } catch (error) {
       console.error('[ChatOrchestrator] Fallback response generation failed:', error);
       // Provide a generic fallback

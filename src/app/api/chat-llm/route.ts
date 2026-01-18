@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { callGeminiText } from '@/lib/ai/gemini';
+import { callLLMText, hasAnyLLMKey, LLMProvider, LLMAgent } from '@/lib/ai/llmService';
 
 type ChatLlmRequest = {
   prompt: string;
+  provider?: LLMProvider;
+  agent?: LLMAgent;
 };
 
 export async function POST(request: NextRequest) {
@@ -12,16 +14,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'prompt is required' }, { status: 400 });
     }
 
-    // Check if API key is configured
-    if (!process.env.GEMINI_API_KEY) {
-      console.error('GEMINI_API_KEY environment variable is not set');
+    // Check if any API key is configured
+    if (!hasAnyLLMKey()) {
+      console.error('No LLM API key configured (GEMINI_API_KEY or CEREBRAS_API_KEY)');
       return NextResponse.json(
-        { error: 'LLM service not configured. Please set GEMINI_API_KEY.' },
+        { error: 'LLM service not configured. Please set GEMINI_API_KEY or CEREBRAS_API_KEY.' },
         { status: 503 }
       );
     }
 
-    const text = await callGeminiText(body.prompt);
+    const text = await callLLMText(body.prompt, {
+      provider: body.provider,
+      agent: body.agent,
+    });
+
     if (!text) {
       return NextResponse.json(
         { error: 'No model response. Check server logs for details.' },
