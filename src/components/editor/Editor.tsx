@@ -297,11 +297,11 @@ export function Editor() {
         <button
           onClick={handleExport}
           disabled={isExporting || clips.length === 0}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+          className="flex items-center gap-2 px-3 h-7 bg-slate-600 hover:bg-slate-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm transition-colors"
           title={clips.length === 0 ? 'Add clips to timeline to export' : 'Export video'}
         >
-          <Download className="w-4 h-4" />
-          <span>{isExporting ? 'Exporting...' : 'Export Video'}</span>
+          <Download className="w-3.5 h-3.5" />
+          <span>{isExporting ? 'Exporting...' : 'Export'}</span>
         </button>
       </div>
 

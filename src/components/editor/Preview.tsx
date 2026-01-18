@@ -26,6 +26,8 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
   const reverseAnimationFrameRef = useRef<number | null>(null);
   const isPlayingReverseRef = useRef(false);
   const reverseGlobalTimeRef = useRef<number>(0);
+  const forwardAnimationFrameRef = useRef<number | null>(null);
+  const isPlayingForwardRef = useRef(false);
 
   const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -55,6 +57,28 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
 
   // Sync audio with timeline
   useEffect(() => {
+    // During scrubbing, pause all audio and skip sync to prevent choppy/conflicting audio
+    if (isSeekingRef.current) {
+      audioClips.forEach(clip => {
+        const audio = audioRefs.current.get(clip.id);
+        if (audio && !audio.paused) {
+          audio.pause();
+        }
+      });
+      return;
+    }
+
+    // #NOTE: Temporarily mute audio during reverse playback until proper reverse audio is implemented
+    if (isPlayingReverseRef.current) {
+      audioClips.forEach(clip => {
+        const audio = audioRefs.current.get(clip.id);
+        if (audio && !audio.paused) {
+          audio.pause();
+        }
+      });
+      return;
+    }
+
     audioClips.forEach(clip => {
       const audio = audioRefs.current.get(clip.id);
       if (!audio) return;
@@ -67,14 +91,25 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
       if (currentTime >= clipStart && currentTime <= clipEnd) {
         // Audio should be playing at this time
         const audioTime = currentTime - clipStart + trimStart;
-        // Use tighter sync threshold near clip boundaries
-        const progressInClip = (currentTime - clipStart) / visibleDuration;
-        const isNearBoundary = progressInClip < 0.1 || progressInClip > 0.9;
-        const syncThreshold = isNearBoundary ? 0.05 : 0.3;
-        if (Math.abs(audio.currentTime - audioTime) > syncThreshold) {
-          audio.currentTime = audioTime;
+
+        // During smooth forward playback, skip seeking if audio is already playing
+        // This prevents stuttering from constant currentTime assignments
+        const isForwardPlaying = isPlayingForwardRef.current;
+        const shouldSkipSeek = isForwardPlaying && isPlaying && !audio.paused;
+
+        if (!shouldSkipSeek) {
+          // Use tighter sync threshold near clip boundaries
+          const progressInClip = (currentTime - clipStart) / visibleDuration;
+          const isNearBoundary = progressInClip < 0.1 || progressInClip > 0.9;
+          const syncThreshold = isNearBoundary ? 0.05 : 0.3;
+          if (Math.abs(audio.currentTime - audioTime) > syncThreshold) {
+            audio.currentTime = audioTime;
+          }
         }
+
         if (isPlaying && audio.paused) {
+          // When starting audio, sync its position first
+          audio.currentTime = audioTime;
           audio.play().catch(() => {
             // Ignore autoplay errors
           });
@@ -87,6 +122,8 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         if (!audio.paused) {
           audio.pause();
         }
+        // Reset to clip start for clean playback on re-entry
+        audio.currentTime = trimStart;
       }
     });
   }, [currentTime, isPlaying, audioClips]);
@@ -102,10 +139,11 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
     };
   }, []);
 
-  // Cleanup reverse playback on unmount
+  // Cleanup reverse and forward playback on unmount
   useEffect(() => {
     return () => {
       stopReversePlayback();
+      stopForwardPlayback();
     };
   }, []);
 
@@ -216,32 +254,53 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
     isPlayingReverseRef.current = false;
   };
 
+  const stopForwardPlayback = () => {
+    if (forwardAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(forwardAnimationFrameRef.current);
+      forwardAnimationFrameRef.current = null;
+    }
+    isPlayingForwardRef.current = false;
+  };
+
   const handlePause = () => {
     if (!videoRef.current || !activeClip) return;
-    
+
     // Stop reverse playback if active
     stopReversePlayback();
-    
+    // Stop forward playback RAF loop if active
+    stopForwardPlayback();
+
     videoRef.current.pause();
     setIsPlaying(false);
   };
 
   const handleSkipToBeginning = () => {
+    const wasPlayingForward = isPlayingForwardRef.current;
+    stopReversePlayback();
+    stopForwardPlayback();
     onSeek(0);
     if (videoRef.current && isPlaying) {
-      videoRef.current.play();
+      if (wasPlayingForward) {
+        // Restart forward playback with smooth RAF loop
+        startForwardPlayback();
+      } else {
+        videoRef.current.play();
+      }
     }
   };
 
   const handleSkipToEnd = () => {
     if (sortedClips.length === 0) return;
-    
+
+    stopReversePlayback();
+    stopForwardPlayback();
+
     const lastClip = sortedClips[sortedClips.length - 1];
     const trimStart = lastClip.trimStart || 0;
     const trimEnd = lastClip.trimEnd || 0;
     const visibleDuration = lastClip.duration - trimStart - trimEnd;
     const endTime = lastClip.timestamp + visibleDuration;
-    
+
     onSeek(endTime);
     setIsPlaying(false);
     if (videoRef.current) {
@@ -251,9 +310,10 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
 
   const handlePlayBackward = () => {
     if (!videoRef.current || !activeClip) return;
-    
-    // Stop any existing reverse playback
+
+    // Stop any existing playback loops
     stopReversePlayback();
+    stopForwardPlayback();
     
     // Ensure video is ready and can display frames
     if (videoRef.current.readyState < 2) {
@@ -417,16 +477,74 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
     reverseAnimationFrameRef.current = requestAnimationFrame(reverseStep);
   };
 
-  const handlePlayForward = () => {
+  const startForwardPlayback = () => {
     if (!videoRef.current || !activeClip) return;
-    
-    // Stop reverse playback if active
-    stopReversePlayback();
-    
-    // Play forward at regular speed
+
+    // Start native video playback
     videoRef.current.playbackRate = 1;
     videoRef.current.play();
+    isPlayingForwardRef.current = true;
     setIsPlaying(true);
+
+    // Start RAF loop to poll video.currentTime for smooth scrubber updates
+    const forwardStep = () => {
+      if (!videoRef.current || !isPlayingForwardRef.current) {
+        stopForwardPlayback();
+        return;
+      }
+
+      // Skip updates during seeking but keep loop running
+      if (isSeekingRef.current) {
+        forwardAnimationFrameRef.current = requestAnimationFrame(forwardStep);
+        return;
+      }
+
+      // Skip update during transitions (clip changes) but keep loop running
+      if (isTransitioningRef.current) {
+        forwardAnimationFrameRef.current = requestAnimationFrame(forwardStep);
+        return;
+      }
+
+      // Skip if video is paused but keep loop running (will resume when video plays)
+      if (videoRef.current.paused) {
+        forwardAnimationFrameRef.current = requestAnimationFrame(forwardStep);
+        return;
+      }
+
+      // Find current active clip based on video src
+      const currentActiveClip = sortedClips.find(clip => clip.id === prevActiveClipIdRef.current);
+      if (!currentActiveClip) {
+        forwardAnimationFrameRef.current = requestAnimationFrame(forwardStep);
+        return;
+      }
+
+      const trimStart = currentActiveClip.trimStart || 0;
+      const clipStart = currentActiveClip.timestamp;
+
+      // Calculate global time from video's currentTime
+      const globalTime = clipStart + (videoRef.current.currentTime - trimStart);
+
+      // Update parent component with new global time for smooth scrubber position
+      onTimeUpdate(globalTime);
+
+      // Continue forward playback loop
+      forwardAnimationFrameRef.current = requestAnimationFrame(forwardStep);
+    };
+
+    // Start the forward playback loop
+    forwardAnimationFrameRef.current = requestAnimationFrame(forwardStep);
+  };
+
+  const handlePlayForward = () => {
+    if (!videoRef.current || !activeClip) return;
+
+    // Stop reverse playback if active
+    stopReversePlayback();
+    // Stop any existing forward playback loop
+    stopForwardPlayback();
+
+    // Start forward playback with RAF-based scrubber updates
+    startForwardPlayback();
   };
 
   const handleVideoEnded = () => {
@@ -495,6 +613,10 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
       return;
     }
 
+    // Skip scrubber updates if our forward RAF loop is handling them
+    // (still continue to check clip transitions below)
+    const skipScrubberUpdate = isPlayingForwardRef.current;
+
     const trimStart = activeClip.trimStart || 0;
     const trimEnd = activeClip.trimEnd || 0;
     const visibleDuration = activeClip.duration - trimStart - trimEnd;
@@ -545,7 +667,10 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
       return;
     }
 
-    onTimeUpdate(globalTime);
+    // Only update scrubber if our RAF loop isn't handling it
+    if (!skipScrubberUpdate) {
+      onTimeUpdate(globalTime);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -577,8 +702,8 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
 
   return (
     <div
-      className={`flex-1 bg-black flex flex-col overflow-hidden transition-all ${
-        isDraggingOver ? 'ring-2 ring-blue-500 ring-inset bg-blue-500/10' : ''
+      className={`flex-1 bg-black flex flex-col overflow-hidden ${
+        isDraggingOver ? 'ring-1 ring-inset ring-blue-500/50' : ''
       }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -601,6 +726,7 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
             onPause={() => {
               if (!isPlayingReverseRef.current && !isTransitioningRef.current) {
                 setIsPlaying(false);
+                stopForwardPlayback();
               }
             }}
             onTimeUpdate={handleTimeUpdate}
@@ -611,59 +737,56 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
       </div>
 
       {/* Controls Area */}
-      <div className="flex-shrink-0 pb-4 px-4">
-        {/* Transport Controls */}
-        <div className="flex justify-center items-center gap-2">
-          {/* Skip to Beginning */}
-          <button
-            onClick={handleSkipToBeginning}
-            disabled={!activeClip || sortedClips.length === 0}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Skip to beginning"
-          >
-            <SkipBack className="w-5 h-5 text-white" />
-          </button>
+      <div className="flex-shrink-0 bg-gray-800 border-t border-gray-700 h-10 flex items-center justify-center gap-1 px-2">
+        {/* Skip to Beginning */}
+        <button
+          onClick={handleSkipToBeginning}
+          disabled={!activeClip || sortedClips.length === 0}
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          title="Skip to beginning"
+        >
+          <SkipBack className="w-4 h-4 text-gray-300" />
+        </button>
 
-          {/* Play Backward */}
-          <button
-            onClick={handlePlayBackward}
-            disabled={!activeClip}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Play backward"
-          >
-            <Play className="w-5 h-5 text-white rotate-180" />
-          </button>
+        {/* Play Backward */}
+        <button
+          onClick={handlePlayBackward}
+          disabled={!activeClip}
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          title="Play backward"
+        >
+          <Play className="w-4 h-4 text-gray-300 rotate-180" />
+        </button>
 
-          {/* Pause */}
-          <button
-            onClick={handlePause}
-            disabled={!activeClip || !isPlaying}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Pause"
-          >
-            <Pause className="w-5 h-5 text-white" />
-          </button>
+        {/* Pause */}
+        <button
+          onClick={handlePause}
+          disabled={!activeClip || !isPlaying}
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          title="Pause"
+        >
+          <Pause className="w-4 h-4 text-gray-300" />
+        </button>
 
-          {/* Play Forward */}
-          <button
-            onClick={handlePlayForward}
-            disabled={!activeClip}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Play forward"
-          >
-            <Play className="w-5 h-5 text-white" />
-          </button>
+        {/* Play Forward */}
+        <button
+          onClick={handlePlayForward}
+          disabled={!activeClip}
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          title="Play forward"
+        >
+          <Play className="w-4 h-4 text-gray-300" />
+        </button>
 
-          {/* Skip to End */}
-          <button
-            onClick={handleSkipToEnd}
-            disabled={!activeClip || sortedClips.length === 0}
-            className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Skip to end"
-          >
-            <SkipForward className="w-5 h-5 text-white" />
-          </button>
-        </div>
+        {/* Skip to End */}
+        <button
+          onClick={handleSkipToEnd}
+          disabled={!activeClip || sortedClips.length === 0}
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          title="Skip to end"
+        >
+          <SkipForward className="w-4 h-4 text-gray-300" />
+        </button>
       </div>
     </div>
   );

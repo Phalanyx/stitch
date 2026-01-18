@@ -60,7 +60,7 @@ export function MediaPropertiesModal({
   if (!isOpen) return null;
 
   const Icon = type === 'video' ? Film : Music;
-  const iconColor = type === 'video' ? 'text-blue-400' : 'text-green-400';
+  const iconColor = type === 'video' ? 'text-slate-400' : 'text-violet-400';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">

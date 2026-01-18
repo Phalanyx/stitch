@@ -4,6 +4,7 @@ import { useRef, useState, useEffect } from 'react';
 import { X, Music } from 'lucide-react';
 import { AudioReference } from '@/types/audio';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
+import { getMaxTrimExtension, TimelineClip as TimelineClipType } from '@/lib/timeline-validation';
 
 const SNAP_INCREMENT = 0.05;
 const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) * SNAP_INCREMENT;
@@ -14,6 +15,7 @@ export const AUDIO_CLIP_GAP = 2; // Gap between stacked clips
 
 interface AudioTimelineClipProps {
   clip: AudioReference;
+  layerClips: AudioReference[];
   layerId: string;
   pixelsPerSecond: number;
   onUpdateTimestamp: (id: string, newTime: number, layerId: string, newDepth?: number) => void;
@@ -26,6 +28,7 @@ interface AudioTimelineClipProps {
 
 export function AudioTimelineClip({
   clip,
+  layerClips,
   layerId,
   pixelsPerSecond,
   onUpdateTimestamp,
@@ -45,8 +48,10 @@ export function AudioTimelineClip({
   const dragStartY = useRef(0);
   const initialTimestamp = useRef(0);
   const initialDepth = useRef(0);
+  const pendingTimestamp = useRef(0);
 
-  const isPositionValid = useAudioTimelineStore((state) => state.isPositionValid);
+  const isPositionValidOrAutoTrimmable = useAudioTimelineStore((state) => state.isPositionValidOrAutoTrimmable);
+  const updateAudioTimestampWithAutoTrim = useAudioTimelineStore((state) => state.updateAudioTimestampWithAutoTrim);
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -78,15 +83,19 @@ export function AudioTimelineClip({
     initialDepth.current = depth;
 
     let currentDepth = depth;
+    pendingTimestamp.current = clip.timestamp;
 
     const handleMouseMove = (e: MouseEvent) => {
       // Horizontal movement -> timestamp change
       const deltaX = e.clientX - dragStartX.current;
       const deltaTime = deltaX / pixelsPerSecond;
-      const newTimestamp = snapToGrid(initialTimestamp.current + deltaTime);
+      const newTimestamp = snapToGrid(Math.max(0, initialTimestamp.current + deltaTime));
 
-      // Check if the position would be valid within this layer
-      const valid = isPositionValid(clip.id, newTimestamp, clip.duration, clip.trimStart, clip.trimEnd, layerId);
+      // Store the pending timestamp for auto-trim on release
+      pendingTimestamp.current = newTimestamp;
+
+      // Check if the position would be valid within this layer (including auto-trim resolution)
+      const valid = isPositionValidOrAutoTrimmable(clip.id, newTimestamp, clip.duration, layerId, clip.trimStart, clip.trimEnd);
       setIsPositionInvalid(!valid);
 
       // Vertical movement -> depth change
@@ -106,6 +115,8 @@ export function AudioTimelineClip({
     const handleMouseUp = () => {
       setIsDragging(false);
       setIsPositionInvalid(false);
+      // Apply auto-trim if needed on release
+      updateAudioTimestampWithAutoTrim(clip.id, pendingTimestamp.current, layerId);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
@@ -123,13 +134,25 @@ export function AudioTimelineClip({
     const startTrimStart = clip.trimStart ?? 0;
     const startTimestamp = clip.timestamp;
 
+    // Calculate max extension based on adjacent clips in this layer
+    const timelineClips: TimelineClipType[] = layerClips.map((c) => ({
+      id: c.id,
+      timestamp: c.timestamp,
+      duration: c.duration,
+      trimStart: c.trimStart,
+      trimEnd: c.trimEnd,
+    }));
+    const maxExtension = getMaxTrimExtension(timelineClips, clip.id, 'left');
+
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - startX;
       const deltaTime = deltaX / pixelsPerSecond;
 
-      const newTrimStart = Math.max(0, startTrimStart + deltaTime);
+      const newTrimStart = startTrimStart + deltaTime;
+      // Clamp: can't go below 0, can't exceed max trim, and can't extend past adjacent clip
+      const minTrimStart = startTrimStart - maxExtension; // How far we can extend (reduce trimStart)
       const maxTrim = clip.duration - (clip.trimEnd ?? 0) - 0.1; // Keep min 0.1s visible
-      const clampedTrimStart = snapToGrid(Math.min(newTrimStart, maxTrim));
+      const clampedTrimStart = snapToGrid(Math.max(minTrimStart, Math.min(newTrimStart, maxTrim)));
 
       const newTimestamp = startTimestamp + (clampedTrimStart - startTrimStart);
 
@@ -154,13 +177,25 @@ export function AudioTimelineClip({
     const startX = e.clientX;
     const startTrimEnd = clip.trimEnd ?? 0;
 
+    // Calculate max extension based on adjacent clips in this layer
+    const timelineClips: TimelineClipType[] = layerClips.map((c) => ({
+      id: c.id,
+      timestamp: c.timestamp,
+      duration: c.duration,
+      trimStart: c.trimStart,
+      trimEnd: c.trimEnd,
+    }));
+    const maxExtension = getMaxTrimExtension(timelineClips, clip.id, 'right');
+
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - startX;
       const deltaTime = -deltaX / pixelsPerSecond; // Negative because right drag = less trimEnd
 
-      const newTrimEnd = Math.max(0, startTrimEnd + deltaTime);
+      const newTrimEnd = startTrimEnd + deltaTime;
+      // Clamp: can't go below 0, can't exceed max trim, and can't extend past adjacent clip
+      const minTrimEnd = startTrimEnd - maxExtension; // How far we can extend (reduce trimEnd)
       const maxTrim = clip.duration - (clip.trimStart ?? 0) - 0.1; // Keep min 0.1s visible
-      const clampedTrimEnd = snapToGrid(Math.min(newTrimEnd, maxTrim));
+      const clampedTrimEnd = snapToGrid(Math.max(minTrimEnd, Math.min(newTrimEnd, maxTrim)));
 
       onUpdateTrim(clip.id, { trimEnd: clampedTrimEnd }, layerId);
     };
@@ -187,8 +222,8 @@ export function AudioTimelineClip({
         isPositionInvalid
           ? 'bg-red-500 ring-2 ring-red-300'
           : isSelected
-          ? 'bg-green-600 ring-2 ring-white'
-          : 'bg-green-600'
+          ? 'bg-violet-600 ring-2 ring-white'
+          : 'bg-violet-600'
       } ${isDragging ? 'cursor-grabbing opacity-80' : ''} ${isResizing ? 'opacity-90' : ''}`}
       style={{ left: `${left}px`, width: `${width}px`, minWidth: '20px', top: `${top}px`, height: `${AUDIO_CLIP_HEIGHT}px` }}
       onContextMenu={handleContextMenu}
@@ -199,7 +234,7 @@ export function AudioTimelineClip({
     >
       {/* Left resize handle */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-green-700 hover:bg-green-500 rounded-l-md"
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-violet-700 hover:bg-violet-500 rounded-l-md"
         onMouseDown={handleLeftResize}
       />
 
@@ -227,7 +262,7 @@ export function AudioTimelineClip({
 
       {/* Right resize handle */}
       <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-green-700 hover:bg-green-500 rounded-r-md"
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-violet-700 hover:bg-violet-500 rounded-r-md"
         onMouseDown={handleRightResize}
       />
 

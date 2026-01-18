@@ -187,13 +187,13 @@ export function VideoScrubber({
           >
             {/* Progress fill */}
             <div
-              className="absolute top-0 left-0 h-full bg-blue-500 rounded-full transition-none"
+              className="absolute top-0 left-0 h-full bg-slate-500 rounded-full transition-none"
               style={{ width: `${progress}%` }}
             />
 
             {/* Playhead */}
             <div
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full border-2 border-white shadow-lg"
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-slate-500 rounded-full border-2 border-white shadow-lg"
               style={{ left: `${progress}%`, transform: 'translate(-50%, -50%)' }}
             />
           </div>
