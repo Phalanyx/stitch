@@ -11,7 +11,8 @@ import { useBehaviorAgent } from '@/hooks/useBehaviorAgent';
 import { useVideoExport } from '@/hooks/useVideoExport';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { ExportProgressModal } from '@/components/ui/ExportProgressModal';
-import { Loader2, Download, Upload, MessageCircle } from 'lucide-react';
+import { PreferencesModal } from '@/components/ui/PreferencesModal';
+import { Loader2, Download, Upload, MessageCircle, Heart } from 'lucide-react';
 
 import { AudioMetadata } from '@/types/audio';
 
@@ -125,6 +126,9 @@ export function Editor() {
   // Chat panel state
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [chatWidth, setChatWidth] = useState(320);
+
+  // Preferences modal state
+  const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
 
   const handleAudioCreated = useCallback((audio: AudioMetadata) => {
     setAgentCreatedAudio(audio);
@@ -340,6 +344,14 @@ export function Editor() {
             <Download className="w-4 h-4" />
             <span>{isExporting ? 'Exporting...' : 'Export'}</span>
           </button>
+          <button
+            onClick={() => setIsPreferencesModalOpen(true)}
+            className="flex items-center gap-2 px-3 h-8 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-md transition-colors"
+            title="View and edit preferences"
+          >
+            <Heart className="w-4 h-4" />
+            <span>Preferences</span>
+          </button>
         </div>
       </div>
 
@@ -401,6 +413,12 @@ export function Editor() {
         progress={progress}
         isOpen={isExporting || (progress !== null && (progress.stage === 'complete' || progress.stage === 'error'))}
         onClose={handleCloseExportModal}
+      />
+
+      {/* Preferences Modal */}
+      <PreferencesModal
+        isOpen={isPreferencesModalOpen}
+        onClose={() => setIsPreferencesModalOpen(false)}
       />
 
       {/* Chat Agent - Fixed position spanning full right side */}
