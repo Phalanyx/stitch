@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { text, voiceId, modelId, fileName, voiceSettings } = body;
+    const { text, voiceId, modelId, fileName, voiceSettings, targetDuration } = body;
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
@@ -26,13 +26,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[TTS API] Generating speech for user: ${user.id}`);
+    if (targetDuration !== undefined && (typeof targetDuration !== 'number' || targetDuration <= 0)) {
+      return NextResponse.json(
+        { error: 'targetDuration must be a positive number in seconds' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[TTS API] Generating speech for user: ${user.id}, targetDuration: ${targetDuration ?? 'auto'}`);
 
     const audio = await textToSpeechAndSave(user.id, text, {
       voiceId,
       modelId,
       fileName,
       voiceSettings,
+      targetDuration,
     });
 
     return NextResponse.json({ audio });
