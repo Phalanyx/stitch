@@ -3,7 +3,7 @@ import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 
 export function useAutoSave() {
-  const { clips, isDirty: videoIsDirty, markSaved: markVideoSaved } = useTimelineStore();
+  const { clips, transitions, isDirty: videoIsDirty, markSaved: markVideoSaved } = useTimelineStore();
   const { audioLayers, isDirty: audioIsDirty, markSaved: markAudioSaved } = useAudioTimelineStore();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -13,10 +13,11 @@ export function useAutoSave() {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
     timeoutRef.current = setTimeout(async () => {
-      const body: { session_video?: typeof clips; session_audio?: typeof audioLayers } = {};
+      const body: { session_video?: typeof clips; session_audio?: typeof audioLayers; session_transitions?: typeof transitions } = {};
 
       if (videoIsDirty) {
         body.session_video = clips;
+        body.session_transitions = transitions;
       }
       if (audioIsDirty) {
         body.session_audio = audioLayers;
@@ -35,5 +36,5 @@ export function useAutoSave() {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [clips, audioLayers, videoIsDirty, audioIsDirty, markVideoSaved, markAudioSaved]);
+  }, [clips, transitions, audioLayers, videoIsDirty, audioIsDirty, markVideoSaved, markAudioSaved]);
 }

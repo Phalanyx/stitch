@@ -8,6 +8,7 @@ import {
 } from '@/lib/timeline-validation';
 import { VideoReference } from '@/types/video';
 import { AudioReference, AudioLayer } from '@/types/audio';
+import { Transition } from '@/types/transition';
 
 type ModifyRequest = {
   operation: string;
@@ -15,9 +16,11 @@ type ModifyRequest = {
   audioId?: string;
   clipId?: string;
   timestamp?: number;
-  trimStart?: number;  // For add_video: seconds to trim from start of source video
-  trimEnd?: number;    // For add_video: seconds to trim from end of source video
+  trimStart?: number;
+  trimEnd?: number;
   layerId?: string;
+  transition?: Transition; // For add_transition
+  transitionId?: string;   // For remove_transition
 };
 
 function errorResponse(message: string, status = 400) {
@@ -44,7 +47,7 @@ export async function POST(request: NextRequest) {
   // Fetch current session
   let profile = await prisma.profile.findUnique({
     where: { id: user.id },
-    select: { sessionVideo: true, sessionAudio: true },
+    select: { sessionVideo: true, sessionAudio: true, sessionTransitions: true },
   });
 
   if (!profile) {
@@ -53,13 +56,15 @@ export async function POST(request: NextRequest) {
         id: user.id,
         sessionVideo: [],
         sessionAudio: [],
+        sessionTransitions: [],
       },
-      select: { sessionVideo: true, sessionAudio: true },
+      select: { sessionVideo: true, sessionAudio: true, sessionTransitions: true },
     });
   }
 
   let sessionVideo = (profile.sessionVideo ?? []) as unknown as VideoReference[];
   let sessionAudio = (profile.sessionAudio ?? []) as unknown as AudioLayer[];
+  let sessionTransitions = (profile.sessionTransitions ?? []) as unknown as Transition[];
 
   // Ensure sessionAudio is in the new layer format
   if (sessionAudio.length > 0 && !('clips' in sessionAudio[0])) {
@@ -476,6 +481,25 @@ export async function POST(request: NextRequest) {
       message = `Trimmed audio clip`;
     }
 
+    // Transition operations
+    else if (operation === 'add_transition') {
+      const { transition } = body;
+      if (!transition || !transition.id) {
+        return errorResponse('Missing transition data');
+      }
+      sessionTransitions = [...sessionTransitions, transition];
+      message = `Added ${transition.type} transition`;
+    }
+
+    else if (operation === 'remove_transition') {
+      const { transitionId } = body;
+      if (!transitionId) {
+        return errorResponse('Missing transitionId');
+      }
+      sessionTransitions = sessionTransitions.filter(t => t.id !== transitionId);
+      message = `Removed transition`;
+    }
+
     else {
       return errorResponse(`Unknown operation: ${operation}`);
     }
@@ -511,6 +535,7 @@ export async function POST(request: NextRequest) {
       data: {
         sessionVideo: sessionVideo as unknown as any,
         sessionAudio: sessionAudio as unknown as any,
+        sessionTransitions: sessionTransitions as unknown as any,
       },
     });
 

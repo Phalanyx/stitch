@@ -1,6 +1,7 @@
 import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { JsonValue } from '@/lib/agents/behaviorAgent/types';
+import { Transition, EasingType, TransitionDirection } from '@/types/transition';
 
 export const TOOL_DEFINITIONS = [
   // Read-only tools
@@ -14,7 +15,16 @@ export const TOOL_DEFINITIONS = [
   { name: 'add_video', description: 'Add a video TO the timeline. Args: {videoId, timestamp?, trimStart?, trimEnd?}. For search results: pass start as trimStart, end as trimEnd to add just that clip segment.' },
   { name: 'remove_video', description: 'Remove a clip FROM the timeline. Args: {clipId (from list_clips)}. Call list_clips first to get clipId.' },
   { name: 'move_video', description: 'Move a clip to new position. Args: {clipId (from list_clips), timestamp}.' },
-  { name: 'create_transition', description: 'Generate a smooth transition between two adjacent timeline clips. Args: {precedingPosition, succeedingPosition} (1-based positions from list_clips), plus optional prompt?, durationSeconds?. Call list_clips first to see clip positions.' },
+  // Deprecated: create_transition (server-side generation). Use add_cross_dissolve etc. instead.
+  
+  // Transition tools (Client-side real-time)
+  { name: 'add_cross_dissolve', description: 'Add a cross dissolve transition between two clips. Args: {clipAId, clipBId, durationMs, easing?}. easing: "linear"|"easeIn"|"easeOut"|"easeInOut"' },
+  { name: 'add_fade_to_black', description: 'Fade a clip to black. Args: {clipId, durationMs, color?}' },
+  { name: 'add_fade_from_black', description: 'Fade in from black to a clip. Args: {clipId, durationMs, color?}' },
+  { name: 'add_wipe', description: 'Add a wipe transition. Args: {clipAId, clipBId, durationMs, direction, softness?}. direction: "left"|"right"|"up"|"down"' },
+  { name: 'add_push', description: 'Add a push transition. Args: {clipAId, clipBId, durationMs, direction}' },
+  { name: 'add_slide', description: 'Add a slide transition. Args: {clipAId, clipBId, durationMs, direction}' },
+  { name: 'remove_transition', description: 'Remove a transition. Args: {transitionId}' },
 
   // Audio tools
   { name: 'create_audio_from_text', description: 'Generate speech audio from text with exact duration. Args: {text, targetDuration (required, seconds)}. Audio will be stretched or truncated to match targetDuration.' },
@@ -31,7 +41,6 @@ export type ToolName = (typeof TOOL_DEFINITIONS)[number]['name'];
 // Metadata for tools that have natural language parameters that benefit from variations
 export const NL_TOOL_PARAMS: Record<string, { paramName: string; description: string }> = {
   search_videos: { paramName: 'query', description: 'Search query for finding video clips' },
-  create_transition: { paramName: 'prompt', description: 'Style description for the transition' },
   create_audio_from_text: { paramName: 'text', description: 'Text to convert to speech' },
 };
 
@@ -224,101 +233,90 @@ export function createClientToolRegistry(options?: {
       return modifyTimeline('move_clip', { clipId, timestamp });
     },
 
-    create_transition: async (args, context) => {
-      const precedingPosition = Number(args.precedingPosition ?? 0);
-      const succeedingPosition = Number(args.succeedingPosition ?? 0);
-      if (!precedingPosition || !succeedingPosition) {
-        return errorOutput('Missing precedingPosition or succeedingPosition.');
-      }
-
-      // Sort clips by timestamp for consistent position mapping
-      const sortedClips = [...context.clips].sort((a, b) => a.timestamp - b.timestamp);
-
-      // Validate positions are within range
-      if (precedingPosition < 1 || precedingPosition > sortedClips.length) {
-        return errorOutput(`precedingPosition ${precedingPosition} is out of range (1-${sortedClips.length}).`);
-      }
-      if (succeedingPosition < 1 || succeedingPosition > sortedClips.length) {
-        return errorOutput(`succeedingPosition ${succeedingPosition} is out of range (1-${sortedClips.length}).`);
-      }
-
-      // Validate positions are adjacent (consecutive)
-      if (succeedingPosition !== precedingPosition + 1) {
-        return errorOutput(`Positions must be adjacent. Got ${precedingPosition} and ${succeedingPosition}, expected consecutive positions.`);
-      }
-
-      // Look up clips by position (1-based to 0-based index)
-      const preceding = sortedClips[precedingPosition - 1];
-      const succeeding = sortedClips[succeedingPosition - 1];
-
-      if (!preceding.url || !succeeding.url) {
-        return errorOutput('Missing clip URLs for transition generation.');
-      }
-
-      const precedingTrimStart = preceding.trimStart ?? 0;
-      const precedingTrimEnd = preceding.trimEnd ?? 0;
-      const precedingVisible = Math.max(
-        preceding.duration - precedingTrimStart - precedingTrimEnd,
-        0
-      );
-      const insertTimestamp = preceding.timestamp + precedingVisible;
-
-      const succeedingTrimStart = succeeding.trimStart ?? 0;
-
-      const response = await fetch('/api/transitions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          precedingUrl: preceding.url,
-          succeedingUrl: succeeding.url,
-          precedingTrimEnd,
-          succeedingTrimStart,
-          prompt: args.prompt,
-          durationSeconds: args.durationSeconds,
-        }),
-      });
-
-      const data = (await response.json()) as {
-        videoId?: string;
-        url?: string;
-        duration?: number;
-        error?: string;
+    // Transitions
+    add_cross_dissolve: async (args) => {
+      const transition: Transition = {
+        id: crypto.randomUUID(),
+        type: 'crossDissolve',
+        prevClipId: String(args.clipAId ?? ''),
+        nextClipId: String(args.clipBId ?? ''),
+        duration: Number(args.durationMs ?? 1000),
+        easing: (args.easing as EasingType) || 'linear',
       };
-
-      if (!response.ok || !data.videoId) {
-        return errorOutput(data.error || 'Failed to generate transition.');
+      if (!transition.prevClipId || !transition.nextClipId) {
+        return errorOutput('Missing clipAId or clipBId');
       }
+      return modifyTimeline('add_transition', { transition: transition as any });
+    },
 
-      const addResult = await modifyTimeline('add_video', {
-        videoId: data.videoId,
-        timestamp: insertTimestamp,
-      });
-      if (addResult.status === 'error') {
-        return addResult;
-      }
-
-      const shiftBy = Number(data.duration ?? 0);
-      if (shiftBy > 0) {
-        const moveResult = await modifyTimeline('move_clip', {
-          clipId: succeeding.id,
-          timestamp: succeeding.timestamp + shiftBy,
-        });
-        if (moveResult.status === 'error') {
-          return moveResult;
-        }
-      }
-
-      return {
-        status: 'ok',
-        changed: true,
-        output: {
-          transitionVideoId: data.videoId,
-          transitionUrl: data.url ?? null,
-          transitionDuration: data.duration ?? null,
-          insertedAt: insertTimestamp,
-          shiftedSucceedingTo: shiftBy > 0 ? succeeding.timestamp + shiftBy : null,
-        },
+    add_fade_to_black: async (args) => {
+      const transition: Transition = {
+        id: crypto.randomUUID(),
+        type: 'fadeToBlack',
+        prevClipId: String(args.clipId ?? ''),
+        duration: Number(args.durationMs ?? 1000),
+        color: String(args.color ?? '#000000'),
       };
+      if (!transition.prevClipId) return errorOutput('Missing clipId');
+      return modifyTimeline('add_transition', { transition: transition as any });
+    },
+
+    add_fade_from_black: async (args) => {
+      const transition: Transition = {
+        id: crypto.randomUUID(),
+        type: 'fadeFromBlack',
+        nextClipId: String(args.clipId ?? ''),
+        duration: Number(args.durationMs ?? 1000),
+        color: String(args.color ?? '#000000'),
+      };
+      if (!transition.nextClipId) return errorOutput('Missing clipId');
+      return modifyTimeline('add_transition', { transition: transition as any });
+    },
+
+    add_wipe: async (args) => {
+      const transition: Transition = {
+        id: crypto.randomUUID(),
+        type: 'wipe',
+        prevClipId: String(args.clipAId ?? ''),
+        nextClipId: String(args.clipBId ?? ''),
+        duration: Number(args.durationMs ?? 1000),
+        direction: (args.direction as TransitionDirection) || 'left',
+        softness: Number(args.softness ?? 0),
+      };
+      if (!transition.prevClipId || !transition.nextClipId) return errorOutput('Missing clip IDs');
+      return modifyTimeline('add_transition', { transition: transition as any });
+    },
+
+    add_push: async (args) => {
+      const transition: Transition = {
+        id: crypto.randomUUID(),
+        type: 'push',
+        prevClipId: String(args.clipAId ?? ''),
+        nextClipId: String(args.clipBId ?? ''),
+        duration: Number(args.durationMs ?? 1000),
+        direction: (args.direction as TransitionDirection) || 'left',
+      };
+      if (!transition.prevClipId || !transition.nextClipId) return errorOutput('Missing clip IDs');
+      return modifyTimeline('add_transition', { transition: transition as any });
+    },
+
+    add_slide: async (args) => {
+      const transition: Transition = {
+        id: crypto.randomUUID(),
+        type: 'slide',
+        prevClipId: String(args.clipAId ?? ''),
+        nextClipId: String(args.clipBId ?? ''),
+        duration: Number(args.durationMs ?? 1000),
+        direction: (args.direction as TransitionDirection) || 'left',
+      };
+      if (!transition.prevClipId || !transition.nextClipId) return errorOutput('Missing clip IDs');
+      return modifyTimeline('add_transition', { transition: transition as any });
+    },
+
+    remove_transition: async (args) => {
+      const transitionId = String(args.transitionId ?? '');
+      if (!transitionId) return errorOutput('Missing transitionId');
+      return modifyTimeline('remove_transition', { transitionId });
     },
 
     // Audio tools

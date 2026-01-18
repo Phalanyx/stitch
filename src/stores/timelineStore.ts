@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { VideoReference } from '@/types/video';
+import { Transition, TransitionType, TransitionDirection, EasingType } from '@/types/transition';
 import {
   findNearestValidPosition,
   isPositionValid as checkPositionValid,
@@ -11,6 +12,7 @@ import {
 
 interface TimelineState {
   clips: VideoReference[];
+  transitions: Transition[];
   isDirty: boolean;
 
   normalizeClips: (clips: VideoReference[]) => { clips: VideoReference[]; changed: boolean };
@@ -22,7 +24,18 @@ interface TimelineState {
   removeClip: (id: string) => void;
   removeClipsByVideoId: (videoId: string) => void;
   setClips: (clips: VideoReference[]) => void;
+  setTransitions: (transitions: Transition[]) => void;
   markSaved: () => void;
+  
+  // Transitions
+  addCrossDissolve: (clipAId: string, clipBId: string, durationMs: number, easing?: EasingType) => void;
+  addFadeToBlack: (clipId: string, durationMs: number, color?: string) => void;
+  addFadeFromBlack: (clipId: string, durationMs: number, color?: string) => void;
+  addWipe: (clipAId: string, clipBId: string, durationMs: number, direction: TransitionDirection, softness?: number) => void;
+  addPush: (clipAId: string, clipBId: string, durationMs: number, direction: TransitionDirection) => void;
+  addSlide: (clipAId: string, clipBId: string, durationMs: number, direction: TransitionDirection) => void;
+  removeTransition: (transitionId: string) => void;
+
   // Overlap validation helpers
   isPositionValid: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number) => boolean;
   isPositionValidOrAutoTrimmable: (clipId: string, timestamp: number, duration: number, trimStart?: number, trimEnd?: number) => boolean;
@@ -31,6 +44,7 @@ interface TimelineState {
 
 export const useTimelineStore = create<TimelineState>((set, get) => ({
   clips: [],
+  transitions: [],
   isDirty: false,
 
   // Ensure each clip has a unique id while preserving the source video id.
@@ -216,15 +230,25 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   removeClip: (id) => {
     set((state) => ({
       clips: state.clips.filter((clip) => clip.id !== id),
+      transitions: state.transitions.filter((t) => t.prevClipId !== id && t.nextClipId !== id),
       isDirty: true,
     }));
   },
 
   removeClipsByVideoId: (videoId) => {
-    set((state) => ({
-      clips: state.clips.filter((clip) => clip.videoId !== videoId),
-      isDirty: true,
-    }));
+    set((state) => {
+      const clipsToRemove = state.clips.filter(c => c.videoId === videoId);
+      const clipIdsToRemove = new Set(clipsToRemove.map(c => c.id));
+      
+      return {
+        clips: state.clips.filter((clip) => clip.videoId !== videoId),
+        transitions: state.transitions.filter((t) => 
+          (!t.prevClipId || !clipIdsToRemove.has(t.prevClipId)) && 
+          (!t.nextClipId || !clipIdsToRemove.has(t.nextClipId))
+        ),
+        isDirty: true,
+      };
+    });
   },
 
   setClips: (clips) => {
@@ -232,7 +256,109 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     const { clips: normalized, changed } = normalizeClips(clips);
     set({ clips: normalized, isDirty: changed });
   },
+
+  setTransitions: (transitions) => {
+    set({ transitions, isDirty: true });
+  },
+
   markSaved: () => set({ isDirty: false }),
+
+  // Transitions
+  addCrossDissolve: (clipAId, clipBId, durationMs, easing = 'linear') => {
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `trans-${Date.now()}`;
+    set(state => ({
+      transitions: [...state.transitions, {
+        id,
+        type: 'crossDissolve',
+        prevClipId: clipAId,
+        nextClipId: clipBId,
+        duration: durationMs,
+        easing
+      }],
+      isDirty: true
+    }));
+  },
+
+  addFadeToBlack: (clipId, durationMs, color = '#000000') => {
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `trans-${Date.now()}`;
+    set(state => ({
+      transitions: [...state.transitions, {
+        id,
+        type: 'fadeToBlack',
+        prevClipId: clipId,
+        duration: durationMs,
+        color
+      }],
+      isDirty: true
+    }));
+  },
+
+  addFadeFromBlack: (clipId, durationMs, color = '#000000') => {
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `trans-${Date.now()}`;
+    set(state => ({
+      transitions: [...state.transitions, {
+        id,
+        type: 'fadeFromBlack',
+        nextClipId: clipId,
+        duration: durationMs,
+        color
+      }],
+      isDirty: true
+    }));
+  },
+
+  addWipe: (clipAId, clipBId, durationMs, direction, softness = 0) => {
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `trans-${Date.now()}`;
+    set(state => ({
+      transitions: [...state.transitions, {
+        id,
+        type: 'wipe',
+        prevClipId: clipAId,
+        nextClipId: clipBId,
+        duration: durationMs,
+        direction,
+        softness
+      }],
+      isDirty: true
+    }));
+  },
+
+  addPush: (clipAId, clipBId, durationMs, direction) => {
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `trans-${Date.now()}`;
+    set(state => ({
+      transitions: [...state.transitions, {
+        id,
+        type: 'push',
+        prevClipId: clipAId,
+        nextClipId: clipBId,
+        duration: durationMs,
+        direction
+      }],
+      isDirty: true
+    }));
+  },
+
+  addSlide: (clipAId, clipBId, durationMs, direction) => {
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `trans-${Date.now()}`;
+    set(state => ({
+      transitions: [...state.transitions, {
+        id,
+        type: 'slide',
+        prevClipId: clipAId,
+        nextClipId: clipBId,
+        duration: durationMs,
+        direction
+      }],
+      isDirty: true
+    }));
+  },
+
+  removeTransition: (transitionId) => {
+    set(state => ({
+      transitions: state.transitions.filter(t => t.id !== transitionId),
+      isDirty: true
+    }));
+  },
 
   // Overlap validation helpers for UI feedback
   isPositionValid: (clipId, timestamp, duration, trimStart, trimEnd) => {

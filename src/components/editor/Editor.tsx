@@ -55,6 +55,7 @@ const getAudioDuration = (url: string): Promise<number> => {
 export function Editor() {
   const {
     clips,
+    transitions,
     isLoading,
     addVideoToTimeline,
     addVideoAtTimestamp,
@@ -368,6 +369,7 @@ export function Editor() {
         />
         <Preview
           clips={clips}
+          transitions={transitions}
           audioLayers={audioLayers}
           videoRef={videoRef}
           isPlaying={isPlaying}

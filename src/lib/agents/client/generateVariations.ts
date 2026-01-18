@@ -51,8 +51,6 @@ export async function generateVariations(
       '',
       toolCall.tool === 'search_videos'
         ? 'For search queries: vary specificity, keywords, or search angles.'
-        : toolCall.tool === 'create_transition'
-        ? 'For transitions: vary style, mood, or visual effect descriptions.'
         : 'For text-to-speech: vary tone, pacing cues, or emphasis.',
     ].join('\n');
 

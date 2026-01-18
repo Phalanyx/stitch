@@ -3,6 +3,7 @@ import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 import { useHistoryStore } from '@/stores/historyStore';
 import { VideoReference } from '@/types/video';
+import { Transition } from '@/types/transition';
 import { AudioReference, AudioLayer } from '@/types/audio';
 import {
   createAddVideoCommand,
@@ -22,7 +23,7 @@ import { useSelectionStore } from '@/stores/selectionStore';
 import { useClipboardStore, ClipboardClip } from '@/stores/clipboardStore';
 
 export function useTimeline() {
-  const { clips, setClips } = useTimelineStore();
+  const { clips, transitions, setClips, setTransitions } = useTimelineStore();
   const {
     audioLayers,
     activeLayerId,
@@ -41,13 +42,15 @@ export function useTimeline() {
         const data = await response.json();
         const videoData = data.session_video as VideoReference[];
         const audioData = data.session_audio as AudioReference[] | AudioLayer[];
+        const transitionData = data.session_transitions as Transition[];
         setClips(videoData ?? []);
         setAudioClips(audioData ?? []);
+        setTransitions(transitionData ?? []);
       }
     } catch (error) {
       console.error('Failed to load session:', error);
     }
-  }, [setClips, setAudioClips]);
+  }, [setClips, setAudioClips, setTransitions]);
 
   // Video operations wrapped with commands
   const addVideoToTimeline = useCallback(
@@ -462,6 +465,7 @@ export function useTimeline() {
 
   return {
     clips,
+    transitions,
     isLoading,
     addVideoToTimeline,
     addVideoAtTimestamp,

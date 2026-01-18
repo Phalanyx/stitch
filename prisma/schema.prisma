@@ -11,6 +11,7 @@ model Profile {
   id                     String   @id @db.Uuid
   sessionVideo           Json     @default("[]") @map("session_video")
   sessionAudio           Json     @default("[]") @map("session_audio")
+  sessionTransitions     Json     @default("[]") @map("session_transitions")
   userLikes              String   @default("") @map("user_likes") @db.Text
   userDislikes           String   @default("") @map("user_dislikes") @db.Text
   showToolOptionsPreview Boolean  @default(false) @map("show_tool_options_preview")

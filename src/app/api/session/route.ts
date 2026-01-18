@@ -14,7 +14,7 @@ export async function GET() {
 
   let profile = await prisma.profile.findUnique({
     where: { id: user.id },
-    select: { sessionVideo: true, sessionAudio: true },
+    select: { sessionVideo: true, sessionAudio: true, sessionTransitions: true },
   });
 
   // Create profile if it doesn't exist
@@ -24,14 +24,16 @@ export async function GET() {
         id: user.id,
         sessionVideo: [],
         sessionAudio: [],
+        sessionTransitions: [],
       },
-      select: { sessionVideo: true, sessionAudio: true },
+      select: { sessionVideo: true, sessionAudio: true, sessionTransitions: true },
     });
   }
 
   return NextResponse.json({
     session_video: profile.sessionVideo,
     session_audio: profile.sessionAudio,
+    session_transitions: profile.sessionTransitions,
   });
 }
 
@@ -45,7 +47,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { session_video, session_audio } = body;
+  const { session_video, session_audio, session_transitions } = body;
 
   // Validate video track for overlaps
   if (session_video !== undefined && Array.isArray(session_video)) {
@@ -89,12 +91,15 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const updateData: { sessionVideo?: object; sessionAudio?: object } = {};
+  const updateData: { sessionVideo?: object; sessionAudio?: object; sessionTransitions?: object } = {};
   if (session_video !== undefined) {
     updateData.sessionVideo = session_video;
   }
   if (session_audio !== undefined) {
     updateData.sessionAudio = session_audio;
+  }
+  if (session_transitions !== undefined) {
+    updateData.sessionTransitions = session_transitions;
   }
 
   await prisma.profile.upsert({
@@ -104,6 +109,7 @@ export async function POST(request: NextRequest) {
       id: user.id,
       sessionVideo: session_video ?? [],
       sessionAudio: session_audio ?? [],
+      sessionTransitions: session_transitions ?? [],
     },
   });
 
