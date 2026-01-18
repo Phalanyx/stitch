@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 import { useHistoryStore } from '@/stores/historyStore';
