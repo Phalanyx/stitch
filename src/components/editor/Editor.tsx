@@ -282,31 +282,6 @@ export function Editor() {
     input.click();
   }, []);
 
-  useEffect(() => {
-    if (isLoading) return;
-    if (lastSentCount.current === clips.length) return;
-    lastSentCount.current = clips.length;
-
-    const now = Date.now();
-    // Behavioral agent test only; not used for production outputs.
-    const events = [
-      { type: 'editor_opened', ts: now - 1000 },
-      ...clips.map((clip, index) => ({
-        type: 'clip_added',
-        ts: now - 900 + index * 50,
-        props: { id: clip.id },
-      })),
-    ];
-
-    runAgent(events)
-      .then((data) => {
-        console.log('Agent output', data);
-      })
-      .catch((error) => {
-        console.error('Agent test failed', error);
-      });
-  }, [clips, isLoading, runAgent]);
-
   if (isLoading) {
     return (
       <div className="h-screen bg-gray-900 flex items-center justify-center">

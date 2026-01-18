@@ -262,6 +262,9 @@ export async function createIndex(indexName: string): Promise<string> {
 /**
  * Search indexed videos using natural language queries
  * Returns matching clips with videoId, start/end times, score, and confidence
+ *
+ * Note: Uses direct REST API call due to SDK bug with async iterator
+ * (TwelvelabsApiError: Response body object should not be disturbed or locked)
  */
 export async function searchVideos(
   query: string,
@@ -287,37 +290,65 @@ export async function searchVideos(
   console.log(`[Twelve Labs] Searching for: "${query}" with options:`, filteredOptions);
 
   try {
-    const response = await client.search.query({
-      indexId: INDEX_ID,
-      queryText: query,
-      searchOptions: filteredOptions,
+    // Use direct REST API call to avoid SDK async iterator bug
+    const formData = new FormData();
+    formData.append('index_id', INDEX_ID);
+    formData.append('query_text', query);
+    formData.append('search_options', JSON.stringify(filteredOptions));
+    formData.append('page_limit', String(limit));
+
+    const response = await fetch('https://api.twelvelabs.io/v1.3/search', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.TWELVE_LABS_API_KEY!,
+      },
+      body: formData,
     });
 
-    const results: VideoSearchResult[] = [];
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `${response.status} - ${errorText}`;
 
-    // Collect results from the search response
-    for await (const clip of response) {
-      if (results.length >= limit) break;
-
-      // Skip clips without required data
-      if (!clip.videoId || clip.start === undefined || clip.end === undefined) {
-        continue;
+      // Parse the error for better messaging
+      try {
+        const errorJson = JSON.parse(errorText) as { message?: string };
+        if (response.status === 429) {
+          errorMessage = `Rate limit exceeded: ${errorJson.message}`;
+        } else if (errorJson.message) {
+          errorMessage = errorJson.message;
+        }
+      } catch {
+        // Keep the raw error text
       }
 
-      results.push({
-        videoId: clip.videoId,
-        rank: clip.rank ?? 0,
-        start: clip.start,
-        end: clip.end,
-        thumbnailUrl: clip.thumbnailUrl,
-      });
+      throw new Error(`Twelve Labs API error: ${errorMessage}`);
     }
+
+    const data = await response.json() as {
+      data?: Array<{
+        id: string;
+        video_id: string;
+        start: number;
+        end: number;
+        confidence: string;
+        score: number;
+        thumbnail_url?: string;
+      }>;
+    };
+
+    const results: VideoSearchResult[] = (data.data ?? []).map((clip, index) => ({
+      videoId: clip.video_id,
+      rank: index + 1,
+      start: clip.start,
+      end: clip.end,
+      thumbnailUrl: clip.thumbnail_url,
+    }));
 
     console.log(`[Twelve Labs] Found ${results.length} matching clips`);
 
     return results;
   } catch (error) {
     console.error('[Twelve Labs] Search failed:', error);
-    throw error; // Re-throw with original error for better debugging
+    throw error;
   }
 }
