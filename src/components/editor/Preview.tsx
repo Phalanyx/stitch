@@ -718,7 +718,7 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         <button
           onClick={handleSkipToBeginning}
           disabled={!activeClip || sortedClips.length === 0}
-          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center rounded transition-colors"
           title="Skip to beginning"
         >
           <SkipBack className="w-4 h-4 text-gray-300" />
@@ -728,7 +728,7 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         <button
           onClick={handlePlayBackward}
           disabled={!activeClip}
-          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center rounded transition-colors"
           title="Play backward"
         >
           <Play className="w-4 h-4 text-gray-300 rotate-180" />
@@ -738,7 +738,7 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         <button
           onClick={handlePause}
           disabled={!activeClip || !isPlaying}
-          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center rounded transition-colors"
           title="Pause"
         >
           <Pause className="w-4 h-4 text-gray-300" />
@@ -748,7 +748,7 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         <button
           onClick={handlePlayForward}
           disabled={!activeClip}
-          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center rounded transition-colors"
           title="Play forward"
         >
           <Play className="w-4 h-4 text-gray-300" />
@@ -758,7 +758,7 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         <button
           onClick={handleSkipToEnd}
           disabled={!activeClip || sortedClips.length === 0}
-          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          className="w-7 h-7 bg-transparent hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center rounded transition-colors"
           title="Skip to end"
         >
           <SkipForward className="w-4 h-4 text-gray-300" />

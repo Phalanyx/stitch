@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Stitch - Video Editor Timeline",
+  title: "Stitch",
   description: "A video editing timeline application",
 };
 

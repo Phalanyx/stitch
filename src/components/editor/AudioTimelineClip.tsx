@@ -213,7 +213,7 @@ export function AudioTimelineClip({
           onClick={(e) => e.stopPropagation()}
         >
           <button
-            className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700"
+            className="w-full px-4 py-1 text-left text-sm text-white hover:bg-gray-700 rounded"
             onClick={() => {
               onRemove(clip.id, layerId);
               setShowContextMenu(false);

@@ -405,7 +405,7 @@ export function Timeline({
                 onChange={handleLayerNameChange}
                 onBlur={handleLayerNameBlur}
                 onKeyDown={handleLayerNameKeyDown}
-                className="flex-1 text-xs bg-gray-800 text-white px-1 rounded border border-gray-600 focus:outline-none focus:border-green-500 min-w-0"
+                className="flex-1 text-xs bg-gray-800 text-white px-1 rounded-md border border-gray-600 focus:outline-none focus:border-green-500 min-w-0"
                 autoFocus
               />
             ) : (

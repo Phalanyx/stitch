@@ -317,7 +317,7 @@ export function Editor() {
         <button
           onClick={handleExport}
           disabled={isExporting || clips.length === 0}
-          className="flex items-center gap-2 px-3 h-7 bg-slate-600 hover:bg-slate-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm transition-colors"
+          className="flex items-center gap-2 px-3 h-7 bg-slate-600 hover:bg-slate-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm rounded-md transition-colors"
           title={clips.length === 0 ? 'Add clips to timeline to export' : 'Export video'}
         >
           <Download className="w-3.5 h-3.5" />

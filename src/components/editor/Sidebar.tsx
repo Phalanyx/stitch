@@ -608,7 +608,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
                     handleCancelEdit();
                   }
                 }}
-                className="flex-1 bg-gray-800 text-white text-sm px-2 py-0.5 border border-gray-600 focus:border-blue-500 focus:outline-none min-w-0"
+                className="flex-1 bg-gray-800 text-white text-sm px-2 py-0.5 border border-gray-600 focus:border-blue-500 focus:outline-none min-w-0 rounded"
               />
               <button
                 onClick={() => handleSaveEdit(type, item.id)}
@@ -632,14 +632,14 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <button
                     onClick={(e) => handleStartEdit(item.id, item.fileName, e)}
-                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
                     title="Rename"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={(e) => handlePropertiesClick(item, type, e)}
-                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                    className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
                     title="Properties"
                   >
                     <Info className="w-3.5 h-3.5" />
@@ -675,7 +675,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
         <button
           onClick={() => videoFileInputRef.current?.click()}
           disabled={uploadModal.isOpen && uploadModal.stage !== 'indexing' && uploadModal.stage !== 'complete' && uploadModal.stage !== 'error'}
-          className="w-full flex items-center justify-center gap-2 px-3 h-7 text-white text-sm transition-colors bg-slate-600 hover:bg-slate-700 disabled:bg-gray-700 disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 px-3 h-7 text-white text-sm transition-colors bg-slate-600 hover:bg-slate-700 disabled:bg-gray-700 disabled:opacity-50 rounded-md"
         >
           <Upload className="w-4 h-4" />
           Upload Video
@@ -736,7 +736,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
         <button
           onClick={() => audioFileInputRef.current?.click()}
           disabled={isUploadingAudio}
-          className="w-full flex items-center justify-center gap-2 px-3 h-7 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-700 disabled:opacity-50 text-white text-sm transition-colors"
+          className="w-full flex items-center justify-center gap-2 px-3 h-7 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-700 disabled:opacity-50 text-white text-sm transition-colors rounded-md"
         >
           {isUploadingAudio ? (
             <>
