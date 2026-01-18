@@ -1,4 +1,5 @@
-import { callGeminiText, parseJsonFromText } from '@/lib/ai/gemini';
+import { parseJsonFromText } from '@/lib/ai/gemini';
+import { callLLMText } from '@/lib/ai/llmService';
 import { BehaviorState, Plan, ToolCall } from './types';
 import { TOOL_DEFINITIONS } from '@/lib/tools/agentTools';
 
@@ -21,7 +22,7 @@ export async function planToolCalls(
   toolNames: string[],
   prompt: string
 ): Promise<Plan> {
-  const aiText = await callGeminiText(
+  const aiText = await callLLMText(
     [
       'You are a planner that chooses which tools to call in order.',
       'Return JSON array only, each item: {"tool":"toolName","args":{...},"rationale":"..."}',
@@ -31,7 +32,8 @@ export async function planToolCalls(
       `Behavior phase: ${behavior.phase}`,
       `Event counts: ${JSON.stringify(behavior.eventCounts)}`,
       'Pick up to 2 tool calls.',
-    ].join('\n')
+    ].join('\n'),
+    { agent: 'behavior' }
   );
 
   const aiCalls = parseJsonFromText<ToolCall[]>(aiText);
