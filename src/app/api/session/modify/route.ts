@@ -275,7 +275,6 @@ export async function POST(request: NextRequest) {
         return errorResponse(`Clip ${clipId} not found on timeline`);
       }
 
-      const clip = sessionVideo[clipIndex];
       const updates: Partial<VideoReference> = {};
       if (trimStart !== undefined) updates.trimStart = Math.max(0, trimStart);
       if (trimEnd !== undefined) updates.trimEnd = Math.max(0, trimEnd);
@@ -509,7 +508,9 @@ export async function POST(request: NextRequest) {
     await prisma.profile.update({
       where: { id: user.id },
       data: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         sessionVideo: sessionVideo as unknown as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         sessionAudio: sessionAudio as unknown as any,
       },
     });

@@ -70,7 +70,8 @@ export async function callLLMText(
   const configuredProvider = options.provider || getProviderForAgent(agent);
   const primaryProvider = configuredProvider || getDefaultProvider();
 
-  console.log(`[LLMService] Using provider: ${primaryProvider}, agent: ${agent || 'default'}`);
+  console.log(`[LLMService] Request for agent: ${agent || 'default'}`);
+  console.log(`[LLMService] Configured provider: ${configuredProvider}, using: ${primaryProvider}`);
 
   try {
     const result = await callProvider(primaryProvider, prompt, agent);
@@ -79,16 +80,26 @@ export async function callLLMText(
       return result;
     }
 
+    // If explicitly configured, do NOT fallback
+    if (configuredProvider) {
+      return null;
+    }
+
     // If primary returned null/empty, try fallback
     const fallbackProvider = getFallbackProvider(primaryProvider);
     if (fallbackProvider) {
-      console.log(`[LLMService] Primary provider returned empty, trying fallback: ${fallbackProvider}`);
+      console.log(`[LLMService] Primary provider (${primaryProvider}) returned empty, trying fallback: ${fallbackProvider}`);
       return callProvider(fallbackProvider, prompt, agent);
     }
 
     return null;
   } catch (error) {
     console.error(`[LLMService] Primary provider (${primaryProvider}) failed:`, error);
+
+    // If explicitly configured, do NOT fallback
+    if (configuredProvider) {
+      throw error;
+    }
 
     // Try fallback on error
     const fallbackProvider = getFallbackProvider(primaryProvider);

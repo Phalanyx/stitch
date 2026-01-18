@@ -83,7 +83,7 @@ export async function generateVariations(
       ruleContext,
     ].join('\n');
 
-    const responseText = await callChatLlm(prompt);
+    const responseText = await callChatLlm(prompt, { agent: 'chat' });
     const parsed = parseJsonFromText<VariationResponse>(responseText);
 
     if (!parsed?.variations || !Array.isArray(parsed.variations)) {

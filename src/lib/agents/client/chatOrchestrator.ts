@@ -6,6 +6,7 @@ import { AudioMetadata } from '@/types/audio';
 import { JsonValue } from '@/lib/agents/behaviorAgent/types';
 import { runToolCall } from './toolRunner';
 import { generateVariations, ToolOptionVariation, StylisticRule } from './generateVariations';
+import { PatternObservation } from '@/lib/agents/historyAgent/types';
 
 // Helper to fetch active stylistic rules for a tool
 async function fetchStylisticRules(toolName: string): Promise<StylisticRule[]> {
@@ -43,6 +44,7 @@ type ChatOrchestratorInput = {
   onTimelineChanged?: () => void;
   conversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
   showToolOptionsPreview?: boolean;
+  patternNotifications?: PatternObservation[];
   resumeWithSelection?: {
     toolCall: ToolCall;
     selectedValue: string;
@@ -235,23 +237,40 @@ async function executeToolPlan(
     // OR if the plan was empty (user's request might be informational)
     if (hasModifyingAction || currentPlan.length === 0) {
       try {
+        const satisfactionPromptParts = [
+          'Check if the user request was fulfilled.',
+          'IMPORTANT: Respond with ONLY JSON: {"satisfied":true,"response":"..."} or {"satisfied":false}',
+          '',
+          `User request: ${input.message}`,
+          `Conversation context: ${JSON.stringify(conversation.slice(-6))}`,
+          `Actions performed: ${JSON.stringify(toolResults)}`,
+        ];
+
+        // Include pattern notifications in satisfaction check
+        if (input.patternNotifications && input.patternNotifications.length > 0) {
+          satisfactionPromptParts.push('');
+          satisfactionPromptParts.push('=== Workflow Observations ===');
+          for (const notification of input.patternNotifications) {
+            satisfactionPromptParts.push(`- ${notification.title}: ${notification.description}`);
+            if (notification.suggestion) {
+              satisfactionPromptParts.push(`  Tip: ${notification.suggestion}`);
+            }
+          }
+          satisfactionPromptParts.push('');
+          satisfactionPromptParts.push('If the response mentions completing an action, you may naturally include a relevant workflow tip.');
+        }
+
+        satisfactionPromptParts.push('');
+        satisfactionPromptParts.push('IMPORTANT: The user request is NOT fulfilled if:');
+        satisfactionPromptParts.push('- User asked to remove/delete something but no remove action was performed');
+        satisfactionPromptParts.push('- User asked to add something but no add action was performed');
+        satisfactionPromptParts.push('- User asked to move something but no move action was performed');
+        satisfactionPromptParts.push('- Only list/summarize actions were performed for a modification request');
+        satisfactionPromptParts.push('');
+        satisfactionPromptParts.push('If satisfied, write a brief response describing what was done.');
+
         const satisfactionText = await callChatLlm(
-          [
-            'Check if the user request was fulfilled.',
-            'IMPORTANT: Respond with ONLY JSON: {"satisfied":true,"response":"..."} or {"satisfied":false}',
-            '',
-            `User request: ${input.message}`,
-            `Conversation context: ${JSON.stringify(conversation.slice(-6))}`,
-            `Actions performed: ${JSON.stringify(toolResults)}`,
-            '',
-            'IMPORTANT: The user request is NOT fulfilled if:',
-            '- User asked to remove/delete something but no remove action was performed',
-            '- User asked to add something but no add action was performed',
-            '- User asked to move something but no move action was performed',
-            '- Only list/summarize actions were performed for a modification request',
-            '',
-            'If satisfied, write a brief response describing what was done.',
-          ].join('\n'),
+          satisfactionPromptParts.join('\n'),
           { agent: 'chat' }
         );
 
@@ -347,6 +366,22 @@ async function executeToolPlan(
       `User said: ${input.message}`,
       `Conversation context: ${JSON.stringify(conversation.slice(-6))}`,
     ];
+
+    // Include pattern notifications if available
+    if (input.patternNotifications && input.patternNotifications.length > 0) {
+      promptParts.push('');
+      promptParts.push('=== Workflow Observations ===');
+      promptParts.push('The following patterns were detected in the user\'s editing workflow:');
+      for (const notification of input.patternNotifications) {
+        promptParts.push(`- ${notification.title}: ${notification.description}`);
+        if (notification.suggestion) {
+          promptParts.push(`  Tip: ${notification.suggestion}`);
+        }
+      }
+      promptParts.push('');
+      promptParts.push('If relevant to the user\'s question, naturally mention these observations.');
+      promptParts.push('Only mention insights that are genuinely helpful. Don\'t force them into the response.');
+    }
 
     if (hasErrors) {
       const errors = toolResults.filter(r => !r.ok);
