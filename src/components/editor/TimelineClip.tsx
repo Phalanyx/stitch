@@ -4,12 +4,14 @@ import { useRef, useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { VideoReference } from '@/types/video';
 import { useTimelineStore } from '@/stores/timelineStore';
+import { getMaxTrimExtension, TimelineClip as TimelineClipType } from '@/lib/timeline-validation';
 
 const SNAP_INCREMENT = 0.05;
 const snapToGrid = (time: number): number => Math.round(time / SNAP_INCREMENT) * SNAP_INCREMENT;
 
 interface TimelineClipProps {
   clip: VideoReference;
+  clips: VideoReference[];
   pixelsPerSecond: number;
   onUpdateTimestamp: (id: string, newTime: number) => void;
   onUpdateTrim: (id: string, updates: { trimStart?: number; trimEnd?: number; timestamp?: number }) => void;
@@ -20,6 +22,7 @@ interface TimelineClipProps {
 
 export function TimelineClip({
   clip,
+  clips,
   pixelsPerSecond,
   onUpdateTimestamp,
   onUpdateTrim,
@@ -35,8 +38,10 @@ export function TimelineClip({
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const dragStartX = useRef(0);
   const initialTimestamp = useRef(0);
+  const pendingTimestamp = useRef(0);
 
-  const isPositionValid = useTimelineStore((state) => state.isPositionValid);
+  const isPositionValidOrAutoTrimmable = useTimelineStore((state) => state.isPositionValidOrAutoTrimmable);
+  const updateVideoTimestampWithAutoTrim = useTimelineStore((state) => state.updateVideoTimestampWithAutoTrim);
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -64,14 +69,18 @@ export function TimelineClip({
     setIsDragging(true);
     dragStartX.current = e.clientX;
     initialTimestamp.current = clip.timestamp;
+    pendingTimestamp.current = clip.timestamp;
 
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - dragStartX.current;
       const deltaTime = deltaX / pixelsPerSecond;
-      const newTimestamp = snapToGrid(initialTimestamp.current + deltaTime);
+      const newTimestamp = snapToGrid(Math.max(0, initialTimestamp.current + deltaTime));
 
-      // Check if the position would be valid
-      const valid = isPositionValid(clip.id, newTimestamp, clip.duration, clip.trimStart, clip.trimEnd);
+      // Store the pending timestamp for auto-trim on release
+      pendingTimestamp.current = newTimestamp;
+
+      // Check if the position would be valid (including auto-trim resolution)
+      const valid = isPositionValidOrAutoTrimmable(clip.id, newTimestamp, clip.duration, clip.trimStart, clip.trimEnd);
       setIsPositionInvalid(!valid);
 
       onUpdateTimestamp(clip.id, newTimestamp);
@@ -80,6 +89,8 @@ export function TimelineClip({
     const handleMouseUp = () => {
       setIsDragging(false);
       setIsPositionInvalid(false);
+      // Apply auto-trim if needed on release
+      updateVideoTimestampWithAutoTrim(clip.id, pendingTimestamp.current);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
@@ -97,13 +108,25 @@ export function TimelineClip({
     const startTrimStart = clip.trimStart ?? 0;
     const startTimestamp = clip.timestamp;
 
+    // Calculate max extension based on adjacent clips
+    const timelineClips: TimelineClipType[] = clips.map((c) => ({
+      id: c.id,
+      timestamp: c.timestamp,
+      duration: c.duration,
+      trimStart: c.trimStart,
+      trimEnd: c.trimEnd,
+    }));
+    const maxExtension = getMaxTrimExtension(timelineClips, clip.id, 'left');
+
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - startX;
       const deltaTime = deltaX / pixelsPerSecond;
 
-      const newTrimStart = Math.max(0, startTrimStart + deltaTime);
+      const newTrimStart = startTrimStart + deltaTime;
+      // Clamp: can't go below 0, can't exceed max trim, and can't extend past adjacent clip
+      const minTrimStart = startTrimStart - maxExtension; // How far we can extend (reduce trimStart)
       const maxTrim = clip.duration - (clip.trimEnd ?? 0) - 0.1; // Keep min 0.1s visible
-      const clampedTrimStart = snapToGrid(Math.min(newTrimStart, maxTrim));
+      const clampedTrimStart = snapToGrid(Math.max(minTrimStart, Math.min(newTrimStart, maxTrim)));
 
       const newTimestamp = startTimestamp + (clampedTrimStart - startTrimStart);
 
@@ -128,13 +151,25 @@ export function TimelineClip({
     const startX = e.clientX;
     const startTrimEnd = clip.trimEnd ?? 0;
 
+    // Calculate max extension based on adjacent clips
+    const timelineClips: TimelineClipType[] = clips.map((c) => ({
+      id: c.id,
+      timestamp: c.timestamp,
+      duration: c.duration,
+      trimStart: c.trimStart,
+      trimEnd: c.trimEnd,
+    }));
+    const maxExtension = getMaxTrimExtension(timelineClips, clip.id, 'right');
+
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - startX;
       const deltaTime = -deltaX / pixelsPerSecond; // Negative because right drag = less trimEnd
 
-      const newTrimEnd = Math.max(0, startTrimEnd + deltaTime);
+      const newTrimEnd = startTrimEnd + deltaTime;
+      // Clamp: can't go below 0, can't exceed max trim, and can't extend past adjacent clip
+      const minTrimEnd = startTrimEnd - maxExtension; // How far we can extend (reduce trimEnd)
       const maxTrim = clip.duration - (clip.trimStart ?? 0) - 0.1; // Keep min 0.1s visible
-      const clampedTrimEnd = snapToGrid(Math.min(newTrimEnd, maxTrim));
+      const clampedTrimEnd = snapToGrid(Math.max(minTrimEnd, Math.min(newTrimEnd, maxTrim)));
 
       onUpdateTrim(clip.id, { trimEnd: clampedTrimEnd });
     };
