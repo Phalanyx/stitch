@@ -612,7 +612,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
               />
               <button
                 onClick={() => handleSaveEdit(type, item.id)}
-                className="p-1 text-violet-400 hover:text-violet-300 hover:bg-gray-700 rounded"
+                className="p-1 text-blue-400 hover:text-blue-300 hover:bg-gray-700 rounded"
               >
                 <Check className="w-3.5 h-3.5" />
               </button>
@@ -675,7 +675,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
         <button
           onClick={() => videoFileInputRef.current?.click()}
           disabled={uploadModal.isOpen && uploadModal.stage !== 'indexing' && uploadModal.stage !== 'complete' && uploadModal.stage !== 'error'}
-          className="w-full flex items-center justify-center gap-2 px-3 h-7 text-white text-sm transition-colors bg-slate-600 hover:bg-slate-700 disabled:bg-gray-700 disabled:opacity-50 rounded-md"
+          className="w-full flex items-center justify-center gap-2 px-3 h-7 text-white text-sm transition-colors bg-sky-600 hover:bg-sky-700 disabled:bg-gray-700 disabled:opacity-50 rounded-md"
         >
           <Upload className="w-4 h-4" />
           Upload Video
@@ -698,12 +698,12 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
                 video,
                 'video',
                 Film,
-                'text-slate-400',
+                'text-sky-400',
                 () => handleAddToTimeline(video),
                 <>
                   {video.twelveLabsStatus === 'ready' && (
                     <span title="AI processed">
-                      <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
+                      <Sparkles className="w-3 h-3 text-blue-400 shrink-0" />
                     </span>
                   )}
                   {video.twelveLabsStatus === 'indexing' && (
@@ -736,7 +736,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
         <button
           onClick={() => audioFileInputRef.current?.click()}
           disabled={isUploadingAudio}
-          className="w-full flex items-center justify-center gap-2 px-3 h-7 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-700 disabled:opacity-50 text-white text-sm transition-colors rounded-md"
+          className="w-full flex items-center justify-center gap-2 px-3 h-7 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:opacity-50 text-white text-sm transition-colors rounded-md"
         >
           {isUploadingAudio ? (
             <>
@@ -764,7 +764,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
         ) : (
           <div>
             {audioFiles.map((audio) =>
-              renderMediaItem(audio, 'audio', Music, 'text-violet-400', () => handleAddAudioToTimeline(audio))
+              renderMediaItem(audio, 'audio', Music, 'text-blue-400', () => handleAddAudioToTimeline(audio))
             )}
           </div>
         )}
@@ -825,7 +825,7 @@ export function Sidebar({ onAddToTimeline, onAddAudioToTimeline, newAudio, onNew
               </button>
               <button
                 onClick={handlePreUploadConfirm}
-                className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-md transition-colors"
+                className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-md transition-colors"
               >
                 Upload
               </button>
