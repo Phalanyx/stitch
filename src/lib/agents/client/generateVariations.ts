@@ -56,7 +56,7 @@ export async function generateVariations(
         : 'For text-to-speech: vary tone, pacing cues, or emphasis.',
     ].join('\n');
 
-    const responseText = await callChatLlm(prompt);
+    const responseText = await callChatLlm(prompt, { agent: 'chat' });
     const parsed = parseJsonFromText<VariationResponse>(responseText);
 
     if (!parsed?.variations || !Array.isArray(parsed.variations)) {

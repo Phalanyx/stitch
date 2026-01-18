@@ -31,6 +31,8 @@ export async function callCerebrasText(
 
   const model = getCerebrasModel(agent);
 
+  console.log(`[Cerebras] Using model: ${model}`);
+
   const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
     method: 'POST',
     headers: {

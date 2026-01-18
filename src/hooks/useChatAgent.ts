@@ -4,7 +4,6 @@ import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
 import { ToolCall } from '@/lib/agents/client/types';
 import { useHistoryAgent } from './useHistoryAgent';
-import { PatternObservation } from '@/lib/agents/historyAgent/types';
 
 export type ToolOptionsData = ToolOptionsPreview;
 
@@ -80,62 +79,6 @@ export function useChatAgent(
     [clips]
   );
 
-  const markMessageFeedback = useCallback((messageId: string | undefined, feedback: 'like' | 'dislike') => {
-    if (!messageId) return;
-    setMessages((current) =>
-      current.map((m) => (m.id === messageId ? { ...m, feedback } : m))
-    );
-  }, []);
-
-  const selectToolOption = useCallback(async (selectedValue: string) => {
-    if (!pendingSelection) return;
-
-    setIsSending(true);
-    setPendingSelection(null);
-
-    try {
-      const result = await runChatOrchestrator({
-        message: pendingSelection.originalMessage,
-        knownClipIds,
-        context: {
-          clips: clipsRef.current,
-          audioClips: audioRef.current,
-        },
-        onAudioCreated: onAudioCreatedRef.current,
-        onTimelineChanged: onTimelineChangedRef.current,
-        showToolOptionsPreview,
-        resumeWithSelection: {
-          toolCall: pendingSelection.toolCall,
-          selectedValue,
-          pendingPlan: pendingSelection.pendingPlan,
-        },
-      });
-      setMessages((current) => [
-        ...current,
-        { id: generateId(), role: 'assistant', content: result.response || 'Unable to generate a response.' },
-      ]);
-    } catch (error) {
-      setMessages((current) => [
-        ...current,
-        {
-          id: generateId(),
-          role: 'assistant',
-          content: error instanceof Error ? error.message : 'Failed to complete action.',
-        },
-      ]);
-    } finally {
-      setIsSending(false);
-    }
-  }, [pendingSelection, knownClipIds, showToolOptionsPreview]);
-
-  const cancelToolOptions = useCallback(() => {
-    setPendingSelection(null);
-    // Remove the tool_options message
-    setMessages((current) => current.filter((m) => m.role !== 'tool_options'));
-  }, []);
-
-  const hasPendingSelection = pendingSelection !== null;
-
   const sendMessage = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isSending) return;
@@ -210,8 +153,9 @@ export function useChatAgent(
     } finally {
       setIsSending(false);
     }
-  }, [audioRef, clipsRef, input, isSending, knownClipIds, messages, showToolOptionsPreview]);
+  }, [audioRef, clipsRef, input, isSending, knownClipIds, messages, showToolOptionsPreview, consumeNotifications]);
 
+  
   const selectToolOption = useCallback(async (selectedValue: string) => {
     if (!pendingSelection) return;
 
