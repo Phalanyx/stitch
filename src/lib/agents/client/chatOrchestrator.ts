@@ -1,9 +1,8 @@
 import { parseJsonFromText } from '@/lib/ai/gemini';
 import { callChatLlm } from '@/lib/ai/chatLlmClient';
 import { TOOL_DEFINITIONS, createClientToolRegistry, hasNLParameter, getNLParamInfo } from '@/lib/tools/agentTools';
-import { AgentContext, ToolCall, ToolResult } from './types';
+import { AgentContext, ToolCall, ToolResult, JsonValue } from './types';
 import { AudioMetadata } from '@/types/audio';
-import { JsonValue } from '@/lib/agents/behaviorAgent/types';
 import { runToolCall } from './toolRunner';
 import { generateVariations, ToolOptionVariation } from './generateVariations';
 import { PatternObservation } from '@/lib/agents/historyAgent/types';

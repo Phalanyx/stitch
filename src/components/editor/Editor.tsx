@@ -7,7 +7,6 @@ import { ChatAgent } from './ChatAgent';
 import { Timeline } from './Timeline';
 import { useTimeline } from '@/hooks/useTimeline';
 import { useAutoSave } from '@/hooks/useAutoSave';
-import { useBehaviorAgent } from '@/hooks/useBehaviorAgent';
 import { useVideoExport } from '@/hooks/useVideoExport';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { ExportProgressModal } from '@/components/ui/ExportProgressModal';
@@ -257,8 +256,6 @@ export function Editor() {
 
   // Derive audioClips from audioLayers for ChatAgent/agents
   const audioClips = audioLayers.flatMap((layer) => layer.clips);
-  const { runAgent } = useBehaviorAgent(clips, audioClips);
-  const lastSentCount = useRef<number | null>(null);
 
   // Import handler that detects file type and routes to correct library
   const handleImport = useCallback(() => {

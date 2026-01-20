@@ -1,6 +1,13 @@
 import { VideoReference } from '@/types/video';
 import { AgentToolOutput, ToolName } from '@/lib/tools/agentTools';
-import { JsonValue } from '@/lib/agents/behaviorAgent/types';
+
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: JsonValue }
+  | JsonValue[];
 
 export type AgentContext = {
   clips: VideoReference[];

@@ -1,6 +1,6 @@
 import { VideoReference } from '@/types/video';
 import { AudioMetadata } from '@/types/audio';
-import { JsonValue } from '@/lib/agents/behaviorAgent/types';
+import { JsonValue } from '@/lib/agents/client/types';
 
 export const TOOL_DEFINITIONS = [
   // Read-only tools
