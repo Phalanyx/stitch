@@ -42,15 +42,7 @@ export function createMoveAudioCommand(params: MoveAudioParams): Command {
     }
 
     if (!clip || !layer) {
-      // Return a no-op command instead of throwing
-      return {
-        id: crypto.randomUUID(),
-        description: `Move audio clip (no-op)`,
-        timestamp: Date.now(),
-        type: 'audio:move' as CommandType,
-        execute() {},
-        undo() {},
-      };
+      throw new CommandExecutionError(`Audio clip ${clipId} not found`, 'audio:move');
     }
 
     originalTimestamp = clip.timestamp;
@@ -64,7 +56,6 @@ export function createMoveAudioCommand(params: MoveAudioParams): Command {
     type: 'audio:move' as CommandType,
 
     execute() {
-      console.log('[MoveAudioCommand] execute called', { clipId, newTimestamp, newDepth });
       const currentStore = useAudioTimelineStore.getState();
       // Find current layer containing the clip (may have changed)
       const currentLayer = currentStore.audioLayers.find((l) =>
@@ -90,7 +81,6 @@ export function createMoveAudioCommand(params: MoveAudioParams): Command {
             }
           : l
       );
-      console.log('[MoveAudioCommand] setting new state', { newLayers });
       useAudioTimelineStore.setState({
         audioLayers: newLayers,
         isDirty: true,

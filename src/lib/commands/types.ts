@@ -16,6 +16,7 @@ export type CommandType =
   | 'audio:remove'
   | 'audio:move'
   | 'audio:trim'
+  | 'audio:toggleClipMute'
   | 'layer:add'
   | 'layer:remove'
   | 'layer:toggleMute'

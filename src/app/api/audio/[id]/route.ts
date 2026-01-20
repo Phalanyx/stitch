@@ -46,6 +46,12 @@ export async function DELETE(
     }
   }
 
+  // Clear any Video foreign keys referencing this audio
+  await prisma.video.updateMany({
+    where: { audioId: id },
+    data: { audioId: null },
+  });
+
   // Delete from database
   await prisma.audio.delete({
     where: { id },
