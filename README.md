@@ -39,8 +39,6 @@ Stitch reimagines video editing by letting creators work the way they communicat
 - **Linux (Ubuntu/Debian):** `sudo apt install ffmpeg`
 - **Linux (Fedora):** `sudo dnf install ffmpeg`
 
-See [FFMPEG_SETUP.md](./FFMPEG_SETUP.md) for detailed instructions.
-
 ## Getting Started
 
 1. **Install dependencies**
