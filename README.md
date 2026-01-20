@@ -57,20 +57,12 @@ See [FFMPEG_SETUP.md](./FFMPEG_SETUP.md) for detailed instructions.
 
 3. **Configure environment variables**
 
-   Create a `.env.local` file with the required API keys:
-   ```env
-   # Supabase
-   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-
-   # AI Services
-   TWELVE_LABS_API_KEY=your_twelve_labs_key
-   ELEVENLABS_API_KEY=your_elevenlabs_key
-   GOOGLE_AI_API_KEY=your_gemini_key
-
-   # Optional
-   FFMPEG_PATH=/path/to/ffmpeg  # Only if FFmpeg is not in PATH
+   Copy the sample environment file and fill in your API keys:
+   ```bash
+   cp sample.env .env
    ```
+
+   See [sample.env](./sample.env) for all available configuration options.
 
 4. **Run the development server**
    ```bash
