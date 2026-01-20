@@ -1,76 +1,122 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Stitch
+
+An AI-powered video editing platform that combines a traditional timeline editor with natural language assistance.
+
+Demo: https://www.youtube.com/watch?v=W8hKYKRYeJ4
+
+## Overview
+
+Stitch reimagines video editing by letting creators work the way they communicate. Instead of navigating complex timelines, tracks, and effects panels, users can describe edits in plain language. The AI assistant, **Lilo Agent**, directly modifies the timeline while respecting its structure and constraints, allowing seamless movement between hands-on editing and AI-assisted workflows.
+
+## Features
+
+- **Natural Language Editing** - Describe edits like trimming clips, rearranging scenes, adding audio, or generating transitions
+- **Traditional Timeline Editor** - Full-featured browser-based timeline with familiar editing controls
+- **Semantic Video Search** - Search across visual content, audio, and transcripts using Twelve Labs indexing
+- **AI-Generated Transitions** - Create smooth, context-aware transitions between clips using VEO
+- **Text-to-Speech Narration** - Generate voiceovers with ElevenLabs
+- **Full Undo/Redo Support** - All edits (manual or AI-initiated) flow through the same command system
+- **Preference Learning** - Lilo Agent adapts to individual editing styles over time
+
+## Tech Stack
+
+| Category | Technologies |
+|----------|-------------|
+| Frontend | Next.js (App Router), React 19, TypeScript, Tailwind CSS |
+| State Management | Zustand |
+| Backend | Next.js API Routes, Prisma, PostgreSQL |
+| Auth & Storage | Supabase |
+| AI Services | Gemini, Twelve Labs, ElevenLabs, VEO |
+| Video Processing | FFmpeg |
 
 ## Prerequisites
 
-Before running the development server, ensure you have:
+- **Node.js** v18 or higher
+- **FFmpeg** installed on your system
 
-1. **Node.js** (v18 or higher recommended)
-2. **FFmpeg** installed on your system (required for video export)
+### FFmpeg Installation
 
-   See [FFMPEG_SETUP.md](./FFMPEG_SETUP.md) for detailed installation instructions.
-   
-   **Quick install:**
-   - **Windows:** `winget install --id=Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements`
-   - **macOS:** `brew install ffmpeg`
-   - **Linux:** `sudo apt install ffmpeg` (Ubuntu/Debian) or `sudo dnf install ffmpeg` (Fedora)
+- **macOS:** `brew install ffmpeg`
+- **Windows:** `winget install --id=Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements`
+- **Linux (Ubuntu/Debian):** `sudo apt install ffmpeg`
+- **Linux (Fedora):** `sudo dnf install ffmpeg`
 
 ## Getting Started
 
-1. Install dependencies:
+1. **Install dependencies**
    ```bash
    npm install
    ```
 
-2. Set up environment variables (if needed):
-   - Create `.env.local` in the root directory
-   - See environment variable requirements below
+2. **Set up the database**
+   ```bash
+   npm run db:start      # Start Supabase locally
+   npm run db:migrate    # Run migrations
+   npm run db:generate   # Generate Prisma client
+   ```
 
-3. Run the development server:
+3. **Configure environment variables**
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+   Copy the sample environment file and fill in your API keys:
+   ```bash
+   cp sample.env .env
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+   See [sample.env](./sample.env) for all available configuration options.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+4. **Run the development server**
+   ```bash
+   npm run dev
+   ```
 
-## Environment Variables
+5. Open [http://localhost:3000](http://localhost:3000)
 
-The application can use the following environment variables (optional):
+## Available Scripts
 
-- `FFMPEG_PATH` - Full path to ffmpeg executable (only needed if FFmpeg is not in your PATH)
-  - Example (Windows): `FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe`
-  - Example (macOS/Linux): `FFMPEG_PATH=/usr/local/bin/ffmpeg`
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run start` | Start production server |
+| `npm run lint` | Run ESLint |
+| `npm run db:start` | Start local Supabase |
+| `npm run db:stop` | Stop local Supabase |
+| `npm run db:migrate` | Run database migrations |
+| `npm run db:generate` | Generate Prisma client |
+| `npm run db:studio` | Open Prisma Studio |
 
-If `FFMPEG_PATH` is not set, the application will try to auto-detect FFmpeg from your system PATH or common installation locations.
+## Architecture
 
-## Video Export
+### State Management
 
-The video export feature requires FFmpeg to be installed. If export fails:
-1. Verify FFmpeg is installed (see [FFMPEG_SETUP.md](./FFMPEG_SETUP.md))
-2. Restart your dev server after installing FFmpeg
+The timeline editor uses Zustand with dedicated stores for:
+- Video clips
+- Audio layers
+- Selections
+- Clipboard actions
+- Undo/redo history
+
+### AI Integration
+
+1. **Video Indexing** - Uploaded videos are automatically indexed with Twelve Labs (Marengo), enabling semantic search across visual content, audio, and transcripts
+2. **Lilo Agent** - Powered by LLMs that reason over timeline state and invoke structured editing tools
+3. **Transition Generation** - VEO creates transitions by extracting the last frame of one clip and the first frame of the next, generating smooth context-aware video
+4. **Text-to-Speech** - ElevenLabs generates narration audio
+
+### Command System
+
+Every timeline modification flows through a unified command system with full undo/redo support. This ensures AI actions are transparent, safe, and reversible.
+
+## Troubleshooting
+
+### Video Export Fails
+1. Verify FFmpeg is installed: `ffmpeg -version`
+2. Restart the dev server after installing FFmpeg
 3. Check server console for `[FFmpeg] Using path: ...` message
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### FFmpeg Not Found
+Set the `FFMPEG_PATH` environment variable to the full path of your FFmpeg executable.
 
-## Learn More
+## License
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private project.
