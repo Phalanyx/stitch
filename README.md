@@ -2,6 +2,8 @@
 
 An AI-powered video editing platform that combines a traditional timeline editor with natural language assistance.
 
+Demo: https://www.youtube.com/watch?v=W8hKYKRYeJ4
+
 ## Overview
 
 Stitch reimagines video editing by letting creators work the way they communicate. Instead of navigating complex timelines, tracks, and effects panels, users can describe edits in plain language. The AI assistant, **Lilo Agent**, directly modifies the timeline while respecting its structure and constraints, allowing seamless movement between hands-on editing and AI-assisted workflows.
