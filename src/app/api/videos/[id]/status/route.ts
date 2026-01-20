@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { getVideoStatus } from '@/lib/twelvelabs';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('Video Status API');
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -53,7 +56,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         duration: status.duration ?? video.duration,
       });
     } catch (error) {
-      console.error('Failed to get Twelve Labs status:', error);
+      // Log error with context but continue with cached status (graceful degradation)
+      logger.error('Failed to get Twelve Labs status', {
+        videoId: id,
+        twelveLabsId: video.twelveLabsId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

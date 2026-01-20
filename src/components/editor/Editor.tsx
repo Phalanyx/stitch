@@ -14,42 +14,7 @@ import { PreferencesModal } from '@/components/ui/PreferencesModal';
 import { Loader2, Download, Upload, MessageCircle, Heart } from 'lucide-react';
 
 import { AudioMetadata } from '@/types/audio';
-
-// Helper to extract video duration from URL
-const getVideoDuration = (url: string): Promise<number> => {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    video.onloadedmetadata = () => {
-      const duration = video.duration;
-      if (isFinite(duration) && !isNaN(duration)) {
-        resolve(duration);
-      } else {
-        reject(new Error('Invalid duration'));
-      }
-    };
-    video.onerror = () => reject(new Error('Failed to load video metadata'));
-    video.src = url;
-  });
-};
-
-// Helper to extract audio duration from URL
-const getAudioDuration = (url: string): Promise<number> => {
-  return new Promise((resolve, reject) => {
-    const audio = document.createElement('audio');
-    audio.preload = 'metadata';
-    audio.onloadedmetadata = () => {
-      const duration = audio.duration;
-      if (isFinite(duration) && !isNaN(duration)) {
-        resolve(duration);
-      } else {
-        reject(new Error('Invalid duration'));
-      }
-    };
-    audio.onerror = () => reject(new Error('Failed to load audio metadata'));
-    audio.src = url;
-  });
-};
+import { getVideoDuration, getAudioDuration } from '@/lib/media-utils';
 
 export function Editor() {
   const {
@@ -173,8 +138,8 @@ export function Editor() {
     setCurrentTime(time);
   }, []);
 
-  // Combined handler to add video and its linked audio track together
-  const handleAddVideoWithAudio = useCallback(async (video: { id: string; url: string; duration?: number; audio?: { id: string; url: string; duration: number | null } }) => {
+  // Handler to add video to timeline (audio must be added separately from the Audio tab)
+  const handleAddVideo = useCallback(async (video: { id: string; url: string; duration?: number }) => {
     let duration = video.duration;
     // Extract duration if not provided
     if (!duration) {
@@ -186,23 +151,7 @@ export function Editor() {
     }
     const videoWithDuration = { ...video, duration };
     addVideoToTimeline(videoWithDuration);
-    // Add linked audio if available
-    if (video.audio) {
-      let audioDuration = video.audio.duration ?? undefined;
-      if (!audioDuration) {
-        try {
-          audioDuration = await getAudioDuration(video.audio.url);
-        } catch (error) {
-          console.error('Failed to extract audio duration:', error);
-        }
-      }
-      addAudioToTimeline({
-        id: video.audio.id,
-        url: video.audio.url,
-        duration: audioDuration,
-      });
-    }
-  }, [addVideoToTimeline, addAudioToTimeline]);
+  }, [addVideoToTimeline]);
 
   // Drop handlers for Timeline
   const handleDropVideo = useCallback(async (video: { id: string; url: string; duration?: number; timestamp: number }) => {
@@ -333,7 +282,7 @@ export function Editor() {
       >
         <Sidebar
           ref={sidebarRef}
-          onAddToTimeline={handleAddVideoWithAudio}
+          onAddToTimeline={handleAddVideo}
           onAddAudioToTimeline={addAudioToTimeline}
           newAudio={agentCreatedAudio}
           onNewAudioHandled={handleNewAudioHandled}
@@ -347,7 +296,7 @@ export function Editor() {
           currentTime={currentTime}
           onTimeUpdate={handleTimeUpdate}
           onSeek={handleSeek}
-          onDropVideo={handleAddVideoWithAudio}
+          onDropVideo={handleAddVideo}
           isSeekingRef={isSeekingRef}
           onUndo={undo}
           onRedo={redo}

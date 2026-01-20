@@ -1,6 +1,7 @@
 import { Command, CommandType } from '../types';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 import { AudioReference } from '@/types/audio';
+import { assertLayerExists } from '../errors';
 
 interface AddAudioParams {
   audio: { id: string; url: string; duration?: number };
@@ -20,8 +21,7 @@ export function createAddAudioCommand(params: AddAudioParams): Command {
 
     execute() {
       const store = useAudioTimelineStore.getState();
-      const targetLayer = store.audioLayers.find((l) => l.id === layerId);
-      if (!targetLayer) return;
+      const targetLayer = assertLayerExists(store.audioLayers, layerId, 'audio:add');
 
       // Calculate timestamp: if provided use it, otherwise add at end
       let newTimestamp: number;

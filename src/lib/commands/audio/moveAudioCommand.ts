@@ -1,5 +1,6 @@
 import { Command, CommandType } from '../types';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
+import { CommandExecutionError } from '../errors';
 
 interface MoveAudioParams {
   clipId: string;
@@ -69,7 +70,9 @@ export function createMoveAudioCommand(params: MoveAudioParams): Command {
       const currentLayer = currentStore.audioLayers.find((l) =>
         l.clips.some((c) => c.id === clipId)
       );
-      if (!currentLayer) return;
+      if (!currentLayer) {
+        throw new CommandExecutionError(`Audio clip ${clipId} not found in any layer`, 'audio:move');
+      }
 
       const newLayers = currentStore.audioLayers.map((l) =>
         l.id === currentLayer.id
@@ -99,7 +102,9 @@ export function createMoveAudioCommand(params: MoveAudioParams): Command {
       const currentLayer = currentStore.audioLayers.find((l) =>
         l.clips.some((c) => c.id === clipId)
       );
-      if (!currentLayer) return;
+      if (!currentLayer) {
+        throw new CommandExecutionError(`Audio clip ${clipId} not found in any layer during undo`, 'audio:move');
+      }
 
       useAudioTimelineStore.setState({
         audioLayers: currentStore.audioLayers.map((l) =>

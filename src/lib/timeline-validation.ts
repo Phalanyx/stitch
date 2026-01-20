@@ -446,3 +446,40 @@ export function getMaxTrimExtension(
     return Math.min(currentTrimEnd, availableSpace);
   }
 }
+
+/**
+ * Find the lowest available depth for a new clip at a given position.
+ * Returns 0 if no overlap, otherwise finds the first depth without overlap.
+ */
+export function findAvailableDepth(
+  clips: TimelineClip[],
+  timestamp: number,
+  duration: number,
+  trimStart?: number,
+  trimEnd?: number
+): number {
+  const visibleDuration = duration - (trimStart ?? 0) - (trimEnd ?? 0);
+  const newStart = timestamp;
+  const newEnd = timestamp + visibleDuration;
+
+  // Track which depths have overlapping clips
+  const occupiedDepths = new Set<number>();
+
+  for (const clip of clips) {
+    const clipDepth = clip.depth ?? 0;
+    const clipStart = clip.timestamp;
+    const clipEnd = getClipEndTime(clip);
+
+    if (rangesOverlap(newStart, newEnd, clipStart, clipEnd)) {
+      occupiedDepths.add(clipDepth);
+    }
+  }
+
+  // Find lowest available depth
+  let depth = 0;
+  while (occupiedDepths.has(depth)) {
+    depth++;
+  }
+
+  return depth;
+}

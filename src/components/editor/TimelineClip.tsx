@@ -305,6 +305,7 @@ export function TimelineClip({
           {(clip.videoId ?? clip.id).slice(0, 8)}...
         </span>
         <button
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             onRemove(clip.id);

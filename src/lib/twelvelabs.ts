@@ -4,21 +4,41 @@ import * as path from 'path';
 import * as https from 'https';
 import * as http from 'http';
 
-const client = new TwelveLabs({ apiKey: process.env.TWELVE_LABS_API_KEY! });
+const SEARCH_TIMEOUT_MS = 30000;
 
-const INDEX_ID = process.env.TWELVE_LABS_INDEX_ID!;
+function getEnvVar(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+let _client: TwelveLabs | null = null;
+function getClient(): TwelveLabs {
+  if (!_client) {
+    _client = new TwelveLabs({ apiKey: getEnvVar('TWELVE_LABS_API_KEY') });
+  }
+  return _client;
+}
+
+function getIndexId(): string {
+  return getEnvVar('TWELVE_LABS_INDEX_ID');
+}
 
 // Search types
 export interface VideoSearchResult {
   videoId: string;
   rank: number;
+  score: number;
+  confidence: string;
   start: number;
   end: number;
   thumbnailUrl?: string;
 }
 
 // Search options supported by TwelveLabs API
-export type SearchOption = 'visual' | 'audio' | 'transcription';
+export type SearchOption = 'visual' | 'audio';
 
 /**
  * Download a file from a URL to a local path
@@ -100,8 +120,8 @@ export async function uploadVideoToTwelveLabs(
     console.log(`[Twelve Labs] Creating indexing task...`);
 
     // Create a task to index the video from file
-    const task = await client.tasks.create({
-      indexId: INDEX_ID,
+    const task = await getClient().tasks.create({
+      indexId: getIndexId(),
       videoFile: fs.createReadStream(tempFilePath),
     });
 
@@ -112,7 +132,7 @@ export async function uploadVideoToTwelveLabs(
     console.log(`[Twelve Labs] Task created: ${task.id}, waiting for completion...`);
 
     // Wait for the task to complete using SDK's built-in method
-    const completedTask = await client.tasks.waitForDone(task.id, {
+    const completedTask = await getClient().tasks.waitForDone(task.id, {
       sleepInterval: 5000, // 5 seconds between polls
       callback: (t) => {
         console.log(`[Twelve Labs] Task status: ${t.status}`);
@@ -167,8 +187,8 @@ export async function createTwelveLabsTask(
     console.log(`[Twelve Labs] Creating indexing task...`);
 
     // Create a task to index the video from file
-    const task = await client.tasks.create({
-      indexId: INDEX_ID,
+    const task = await getClient().tasks.create({
+      indexId: getIndexId(),
       videoFile: fs.createReadStream(tempFilePath),
     });
 
@@ -198,7 +218,7 @@ export async function getTaskStatus(taskId: string): Promise<{
   status: string;
   videoId?: string;
 }> {
-  const task = await client.tasks.retrieve(taskId);
+  const task = await getClient().tasks.retrieve(taskId);
 
   return {
     status: task.status || 'unknown',
@@ -210,7 +230,7 @@ export async function getTaskStatus(taskId: string): Promise<{
  * Generate a summary for a video using Pegasus
  */
 export async function generateVideoSummary(videoId: string): Promise<string> {
-  const response = await client.summarize({
+  const response = await getClient().summarize({
     videoId,
     type: 'summary',
   });
@@ -229,7 +249,7 @@ export async function getVideoStatus(videoId: string): Promise<{
   status: string;
   duration?: number;
 }> {
-  const video = await client.indexes.videos.retrieve(INDEX_ID, videoId);
+  const video = await getClient().indexes.videos.retrieve(getIndexId(), videoId);
 
   return {
     status: 'ready', // Video is ready if it can be retrieved
@@ -242,7 +262,7 @@ export async function getVideoStatus(videoId: string): Promise<{
  * Use this if you need to create a new index
  */
 export async function createIndex(indexName: string): Promise<string> {
-  const index = await client.indexes.create({
+  const index = await getClient().indexes.create({
     indexName,
     models: [
       {
@@ -289,10 +309,14 @@ export async function searchVideos(
 
   console.log(`[Twelve Labs] Searching for: "${query}" with options:`, filteredOptions);
 
+  // Create abort controller for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+
   try {
     // Use direct REST API call to avoid SDK async iterator bug
     const formData = new FormData();
-    formData.append('index_id', INDEX_ID);
+    formData.append('index_id', getIndexId());
     formData.append('query_text', query);
     formData.append('search_options', JSON.stringify(filteredOptions));
     formData.append('page_limit', String(limit));
@@ -300,9 +324,10 @@ export async function searchVideos(
     const response = await fetch('https://api.twelvelabs.io/v1.3/search', {
       method: 'POST',
       headers: {
-        'x-api-key': process.env.TWELVE_LABS_API_KEY!,
+        'x-api-key': getEnvVar('TWELVE_LABS_API_KEY'),
       },
       body: formData,
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -336,9 +361,14 @@ export async function searchVideos(
       }>;
     };
 
-    const results: VideoSearchResult[] = (data.data ?? []).map((clip, index) => ({
+    // Sort by score descending for proper relevance ranking
+    const sortedClips = [...(data.data ?? [])].sort((a, b) => b.score - a.score);
+
+    const results: VideoSearchResult[] = sortedClips.map((clip, index) => ({
       videoId: clip.video_id,
       rank: index + 1,
+      score: clip.score,
+      confidence: clip.confidence,
       start: clip.start,
       end: clip.end,
       thumbnailUrl: clip.thumbnail_url,
@@ -348,7 +378,12 @@ export async function searchVideos(
 
     return results;
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Twelve Labs search timed out after ${SEARCH_TIMEOUT_MS}ms`);
+    }
     console.error('[Twelve Labs] Search failed:', error);
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

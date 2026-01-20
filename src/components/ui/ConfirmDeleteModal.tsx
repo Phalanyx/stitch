@@ -10,6 +10,7 @@ interface ConfirmDeleteModalProps {
   itemType: 'video' | 'audio';
   isUsedInTimeline: boolean;
   isDeleting: boolean;
+  linkedVideoName?: string;
 }
 
 export function ConfirmDeleteModal({
@@ -20,6 +21,7 @@ export function ConfirmDeleteModal({
   itemType,
   isUsedInTimeline,
   isDeleting,
+  linkedVideoName,
 }: ConfirmDeleteModalProps) {
   if (!isOpen) return null;
 
@@ -45,6 +47,13 @@ export function ConfirmDeleteModal({
             <p className="text-gray-300 text-sm mb-2">
               Are you sure you want to delete &quot;{itemName}&quot;? This action cannot be undone.
             </p>
+            {linkedVideoName && (
+              <div className="bg-purple-500/10 border border-purple-500/30 rounded-md p-3 mb-4">
+                <p className="text-purple-400 text-sm">
+                  This audio was extracted from video &quot;{linkedVideoName}&quot;. Deleting it will remove the audio link from that video.
+                </p>
+              </div>
+            )}
             {isUsedInTimeline && (
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-md p-3 mb-4">
                 <p className="text-yellow-400 text-sm">

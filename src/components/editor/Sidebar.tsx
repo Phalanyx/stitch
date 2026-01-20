@@ -10,14 +10,7 @@ import { MediaPropertiesModal } from '@/components/ui/MediaPropertiesModal';
 import { UploadProgressModal, UploadStage } from '@/components/ui/UploadProgressModal';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
-
-// Helper to format duration as MM:SS
-function formatDuration(seconds: number | null): string {
-  if (seconds === null || !isFinite(seconds)) return '';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
+import { formatDuration, getVideoDuration, getAudioDuration } from '@/lib/media-utils';
 
 // Video thumbnail component that extracts frame from video
 function VideoThumbnail({ url, className }: { url: string; className?: string }) {
@@ -103,7 +96,7 @@ function VideoThumbnail({ url, className }: { url: string; className?: string })
 }
 
 interface SidebarProps {
-  onAddToTimeline: (video: { id: string; url: string; duration?: number; audio?: { id: string; url: string; duration: number | null } }) => void;
+  onAddToTimeline: (video: { id: string; url: string; duration?: number }) => void;
   onAddAudioToTimeline: (audio: { id: string; url: string; duration?: number }) => void;
   newAudio?: AudioMetadata | null;
   onNewAudioHandled?: () => void;
@@ -279,30 +272,6 @@ export const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     return () => clearInterval(pollInterval);
   }, [videos, pollTaskStatus]);
 
-  const getVideoDuration = (url: string): Promise<number> => {
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-
-      video.onloadedmetadata = () => {
-        window.URL.revokeObjectURL(video.src);
-        const duration = video.duration;
-        if (isFinite(duration) && !isNaN(duration)) {
-          resolve(duration);
-        } else {
-          reject(new Error('Invalid duration'));
-        }
-      };
-
-      video.onerror = () => {
-        window.URL.revokeObjectURL(video.src);
-        reject(new Error('Failed to load video metadata'));
-      };
-
-      video.src = url;
-    });
-  };
-
   const handleAddToTimeline = async (video: VideoMetadata) => {
     if (editingId) return;
     try {
@@ -320,38 +289,10 @@ export const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         id: video.id,
         url: video.url,
         duration,
-        // Include linked audio data if available
-        audio: video.audio ? {
-          id: video.audio.id,
-          url: video.audio.url,
-          duration: video.audio.duration,
-        } : undefined,
       });
     } catch (error) {
       console.error('Failed to add video to timeline:', error);
     }
-  };
-
-  const getAudioDuration = (url: string): Promise<number> => {
-    return new Promise((resolve, reject) => {
-      const audio = document.createElement('audio');
-      audio.preload = 'metadata';
-
-      audio.onloadedmetadata = () => {
-        const duration = audio.duration;
-        if (isFinite(duration) && !isNaN(duration)) {
-          resolve(duration);
-        } else {
-          reject(new Error('Invalid duration'));
-        }
-      };
-
-      audio.onerror = () => {
-        reject(new Error('Failed to load audio metadata'));
-      };
-
-      audio.src = url;
-    });
   };
 
   const handleAddAudioToTimeline = async (audio: AudioMetadata) => {
@@ -458,6 +399,15 @@ export const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       if (response.ok) {
         const { video } = await response.json();
         setVideos((prev) => [video, ...prev]);
+
+        // Also add the extracted audio to audioFiles state
+        if (video.audio) {
+          const audioWithVideoRef = {
+            ...video.audio,
+            video: { id: video.id, fileName: video.fileName },
+          };
+          setAudioFiles((prev) => [audioWithVideoRef, ...prev]);
+        }
 
         // If task was created successfully, start indexing stage
         if (video.twelveLabsStatus === 'indexing') {
@@ -666,6 +616,17 @@ export const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         } else {
           setAudioFiles((prev) => prev.filter((a) => a.id !== item.id));
           removeClipsByAudioId(item.id);
+
+          // If this audio was linked to a video, update that video's state
+          if ('video' in item && item.video) {
+            setVideos((prev) =>
+              prev.map((v) =>
+                v.id === item.video!.id
+                  ? { ...v, audioId: null, audio: null }
+                  : v
+              )
+            );
+          }
         }
       }
     } catch (error) {
@@ -701,21 +662,12 @@ export const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             e.preventDefault();
             return;
           }
-          // Build drag data - include linked audio for videos
-          const dragData: Record<string, unknown> = {
+          const dragData = {
             type,
             id: item.id,
             url: item.url,
             duration: item.duration,
           };
-          // If this is a video with linked audio, include the audio data
-          if (type === 'video' && 'audio' in item && item.audio) {
-            dragData.audio = {
-              id: item.audio.id,
-              url: item.audio.url,
-              duration: item.audio.duration,
-            };
-          }
           e.dataTransfer.setData('application/json', JSON.stringify(dragData));
           e.dataTransfer.effectAllowed = 'copy';
         }}
@@ -868,19 +820,12 @@ export const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                         e.preventDefault();
                         return;
                       }
-                      const dragData: Record<string, unknown> = {
+                      const dragData = {
                         type: 'video',
                         id: video.id,
                         url: video.url,
                         duration: video.duration,
                       };
-                      if (video.audio) {
-                        dragData.audio = {
-                          id: video.audio.id,
-                          url: video.audio.url,
-                          duration: video.audio.duration,
-                        };
-                      }
                       e.dataTransfer.setData('application/json', JSON.stringify(dragData));
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
@@ -1006,7 +951,21 @@ export const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           ) : (
             <div className="-mx-3 -mt-3">
               {audioFiles.map((audio) =>
-                renderMediaItem(audio, 'audio', Music, 'text-blue-400', () => handleAddAudioToTimeline(audio))
+                renderMediaItem(
+                  audio,
+                  'audio',
+                  Music,
+                  audio.video ? 'text-purple-400' : 'text-blue-400',
+                  () => handleAddAudioToTimeline(audio),
+                  audio.video ? (
+                    <span
+                      className="flex items-center gap-1 text-purple-400"
+                      title={`Extracted from: ${audio.video.fileName}`}
+                    >
+                      <Film className="w-3 h-3" />
+                    </span>
+                  ) : undefined
+                )
               )}
             </div>
           )
@@ -1023,6 +982,7 @@ export const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           itemType={deleteModal.item.type}
           isUsedInTimeline={deleteModal.isUsed}
           isDeleting={isDeleting}
+          linkedVideoName={deleteModal.item.type === 'audio' && 'video' in deleteModal.item && deleteModal.item.video ? deleteModal.item.video.fileName : undefined}
         />
       )}
 

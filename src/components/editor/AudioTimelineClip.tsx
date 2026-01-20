@@ -363,6 +363,7 @@ export function AudioTimelineClip({
           </span>
         </div>
         <button
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             onRemove(clip.id, layerId);

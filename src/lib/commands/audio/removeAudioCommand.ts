@@ -1,6 +1,7 @@
 import { Command, CommandType } from '../types';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
 import { AudioReference } from '@/types/audio';
+import { CommandExecutionError } from '../errors';
 
 interface RemoveAudioParams {
   clipId: string;
@@ -16,7 +17,7 @@ export function createRemoveAudioCommand(params: RemoveAudioParams): Command {
   const clipSnapshot = layer?.clips.find((c) => c.id === clipId);
 
   if (!clipSnapshot) {
-    throw new Error(`Audio clip with id ${clipId} not found in layer ${layerId}`);
+    throw new CommandExecutionError(`Audio clip with id ${clipId} not found in layer ${layerId}`, 'audio:remove');
   }
 
   // Deep copy the clip to preserve state

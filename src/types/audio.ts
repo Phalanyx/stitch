@@ -25,4 +25,5 @@ export interface AudioMetadata {
   duration: number | null;
   fileSize: number | null;
   createdAt: Date;
+  video?: { id: string; fileName: string } | null;
 }

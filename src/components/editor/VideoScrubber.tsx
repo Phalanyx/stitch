@@ -27,6 +27,7 @@ export function VideoScrubber({
   onSeek,
 }: VideoScrubberProps) {
   const scrubberRef = useRef<HTMLDivElement>(null);
+  const cachedRectRef = useRef<DOMRect | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -122,7 +123,8 @@ export function VideoScrubber({
     const scrubber = scrubberRef.current;
     if (!scrubber || displayDuration === 0) return;
 
-    const rect = scrubber.getBoundingClientRect();
+    // Use cached rect during drag for better performance, otherwise get fresh rect
+    const rect = cachedRectRef.current ?? scrubber.getBoundingClientRect();
     const clickX = clientX - rect.left;
     const percentage = Math.max(0, Math.min(1, clickX / rect.width));
     const newTime = percentage * displayDuration;
@@ -145,6 +147,12 @@ export function VideoScrubber({
 
     e.preventDefault();
     setIsDragging(true);
+
+    // Cache the bounding rect on mousedown to avoid getBoundingClientRect on every mousemove
+    if (scrubberRef.current) {
+      cachedRectRef.current = scrubberRef.current.getBoundingClientRect();
+    }
+
     seekToPosition(e.clientX);
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -153,6 +161,8 @@ export function VideoScrubber({
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      // Clear cached rect on mouseup
+      cachedRectRef.current = null;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };

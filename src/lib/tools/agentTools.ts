@@ -1,14 +1,14 @@
 import { VideoReference } from '@/types/video';
-import { AudioMetadata } from '@/types/audio';
+import { AudioMetadata, AudioReference } from '@/types/audio';
 import { JsonValue } from '@/lib/agents/client/types';
 
 export const TOOL_DEFINITIONS = [
   // Read-only tools
   { name: 'summarize_timeline', description: 'Get timeline summary: clip count, total duration, time span.' },
   { name: 'list_clips', description: 'List clips ON the timeline. Returns clipId (needed for remove/move), timestamp, duration. CALL THIS FIRST to delete or move clips.' },
-  { name: 'list_audio', description: 'List audio clips on timeline with clipId, timestamp, duration.' },
+  { name: 'list_audio', description: 'List audio clips on timeline with clipId, timestamp, duration, depth (0=bottom row, higher=stacked).' },
   { name: 'list_uploaded_videos', description: 'List available source videos. Returns videoId (needed for add_video), name. CALL THIS to find videos to add.' },
-  { name: 'search_videos', description: 'Search indexed videos using natural language. Args: {query, searchOptions?: ["visual"|"audio"|"transcription"], limit?: number}. Returns clips with videoId, start, end, rank. Use start/end as trimStart/trimEnd in add_video.' },
+  { name: 'search_videos', description: 'Search indexed videos using natural language. Args: {query, searchOptions?: ["visual"|"audio"], limit?: number}. Returns clips with videoId, start, end, rank, score. Use start/end as trimStart/trimEnd in add_video.' },
 
   // Video modification tools
   { name: 'add_video', description: 'Add a video TO the timeline. Args: {videoId, timestamp?, trimStart?, trimEnd?}. For search results: pass start as trimStart, end as trimEnd to add just that clip segment.' },
@@ -18,8 +18,9 @@ export const TOOL_DEFINITIONS = [
 
   // Audio tools
   { name: 'create_audio_from_text', description: 'Generate speech audio from text with exact duration. Args: {text, targetDuration (required, seconds)}. Audio will be stretched or truncated to match targetDuration.' },
-  { name: 'add_audio', description: 'Add audio to timeline. Args: {audioId, timestamp?}.' },
+  { name: 'add_audio', description: 'Add audio to timeline. Args: {audioId, timestamp?, depth?}. If depth omitted, auto-assigns: depth 0 for sequential clips, new depth for overlapping.' },
   { name: 'remove_audio', description: 'Remove audio from timeline. Args: {clipId}.' },
+  { name: 'move_audio', description: 'Move an audio clip to a new position. Args: {clipId (from list_audio), timestamp, depth?}. If depth omitted, preserves current depth.' },
 
   // Agent tools
   { name: 'suggest_next_action', description: 'Suggest the next action for the user. Args: {phase: string}.' },
@@ -45,7 +46,7 @@ export function getNLParamInfo(toolName: string): { paramName: string; descripti
 
 export type AgentToolContext = {
   clips: VideoReference[];
-  audioClips: VideoReference[];
+  audioClips: AudioReference[];
   conversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
 };
 
@@ -140,6 +141,7 @@ export function createClientToolRegistry(options?: {
         clipId: clip.id,
         timestamp: clip.timestamp,
         duration: clip.duration,
+        depth: clip.depth ?? 0,
       }));
       return { status: 'ok', changed: false, output: audioClips };
     },
@@ -176,10 +178,12 @@ export function createClientToolRegistry(options?: {
           thumbnailUrl?: string;
         }>;
         error?: string;
+        details?: string;
       };
 
       if (!response.ok) {
-        return errorOutput(data.error || 'Failed to search videos.');
+        const errorMsg = data.details || data.error || 'Failed to search videos.';
+        return errorOutput(errorMsg);
       }
 
       return {
@@ -360,6 +364,7 @@ export function createClientToolRegistry(options?: {
       }
       const params: Record<string, JsonValue> = { audioId };
       if (args.timestamp !== undefined) params.timestamp = Number(args.timestamp);
+      if (args.depth !== undefined) params.depth = Number(args.depth);
       return modifyTimeline('add_audio', params);
     },
 
@@ -369,6 +374,20 @@ export function createClientToolRegistry(options?: {
         return errorOutput('Missing clipId argument.');
       }
       return modifyTimeline('remove_audio', { clipId });
+    },
+
+    move_audio: async (args) => {
+      const clipId = String(args.clipId ?? '');
+      const timestamp = Number(args.timestamp ?? 0);
+      if (!clipId) {
+        return errorOutput('Missing clipId argument.');
+      }
+      if (timestamp < 0) {
+        return errorOutput('Timestamp must be non-negative.');
+      }
+      const params: Record<string, JsonValue> = { clipId, timestamp };
+      if (args.depth !== undefined) params.depth = Number(args.depth);
+      return modifyTimeline('move_audio', params);
     },
 
     // Agent tools

@@ -1,5 +1,6 @@
 import { Command, CommandType } from '../types';
 import { useAudioTimelineStore } from '@/stores/audioTimelineStore';
+import { CommandExecutionError } from '../errors';
 
 interface TrimAudioParams {
   clipId: string;
@@ -30,7 +31,7 @@ export function createTrimAudioCommand(params: TrimAudioParams): Command {
     const clip = layer?.clips.find((c) => c.id === clipId);
 
     if (!clip) {
-      throw new Error(`Audio clip with id ${clipId} not found in layer ${layerId}`);
+      throw new CommandExecutionError(`Audio clip with id ${clipId} not found in layer ${layerId}`, 'audio:trim');
     }
 
     originalValues = {

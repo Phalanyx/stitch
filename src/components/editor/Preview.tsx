@@ -34,7 +34,10 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
   const forwardAnimationFrameRef = useRef<number | null>(null);
   const isPlayingForwardRef = useRef(false);
 
-  const sortedClips = [...clips].sort((a, b) => a.timestamp - b.timestamp);
+  const sortedClips = useMemo(
+    () => [...clips].sort((a, b) => a.timestamp - b.timestamp),
+    [clips]
+  );
 
   // Flatten unmuted audio layers into a single array for playback, excluding muted clips
   const audioClips = useMemo(() => {
@@ -52,9 +55,10 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
         audioRefs.current.set(clip.id, audio);
       }
     });
-    // Cleanup removed clips
+    // Cleanup removed clips - use Set for O(1) lookup instead of O(n) find
+    const audioClipIds = new Set(audioClips.map(c => c.id));
     audioRefs.current.forEach((audio, id) => {
-      if (!audioClips.find(c => c.id === id)) {
+      if (!audioClipIds.has(id)) {
         audio.pause();
         audioRefs.current.delete(id);
       }
@@ -160,20 +164,32 @@ export function Preview({ clips, audioLayers, videoRef, isPlaying, setIsPlaying,
     };
   }, []);
 
-  // Find the clip that contains the current scrubber time
+  // Find the clip that contains the current scrubber time with fallback in single pass
   // Use < for clipEnd for consistency with Editor.tsx boundary checks
-  let activeClip = sortedClips.find(clip => {
-    const clipStart = clip.timestamp;
-    const visibleDuration = clip.duration - (clip.trimStart || 0) - (clip.trimEnd || 0);
-    const clipEnd = clipStart + visibleDuration;
-    return currentTime >= clipStart && currentTime < clipEnd;
-  });
+  const activeClip = useMemo(() => {
+    if (sortedClips.length === 0) return undefined;
 
-  // Fallback: if no clip found (e.g., currentTime exactly at boundary between clips),
-  // find the next clip that starts at or after currentTime
-  if (!activeClip && sortedClips.length > 0) {
-    activeClip = sortedClips.find(clip => clip.timestamp >= currentTime) || sortedClips[sortedClips.length - 1];
-  }
+    let containingClip: typeof sortedClips[0] | undefined;
+    let nextClip: typeof sortedClips[0] | undefined;
+
+    for (const clip of sortedClips) {
+      const clipStart = clip.timestamp;
+      const visibleDuration = clip.duration - (clip.trimStart || 0) - (clip.trimEnd || 0);
+      const clipEnd = clipStart + visibleDuration;
+
+      if (currentTime >= clipStart && currentTime < clipEnd) {
+        containingClip = clip;
+        break;
+      }
+      // Track first clip that starts at or after currentTime for fallback
+      if (!nextClip && clip.timestamp >= currentTime) {
+        nextClip = clip;
+      }
+    }
+
+    // Return containing clip, or fallback to next/last clip
+    return containingClip || nextClip || sortedClips[sortedClips.length - 1];
+  }, [sortedClips, currentTime]);
 
   // Sync video currentTime when clip changes
   // Note: currentTime is intentionally NOT in dependencies - we only want this to run
